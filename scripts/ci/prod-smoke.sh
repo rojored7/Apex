@@ -16,6 +16,8 @@
 # Variables: SMOKE_WEB_PORT (8380), SMOKE_DIR (por omisión docs/scratch/ensayo/smoke, ignorada por
 # git; debe estar dentro del repositorio), GIT_SHA (versión de las imágenes; por omisión `smoke`),
 # SMOKE_DOWN=1, CI. --no-build usa las imágenes apex-api:local, apex-web:local y apex-backup:local.
+# S9-V3: SMOKE_ADMIN_PASSWORD_FILE (bajo SMOKE_DIR) deja la clave del admin en un archivo 600 para la prueba de rollback.
+# S9-V3: tras el cambio de clave del admin corre scripts/ci/athletes-smoke.sh (módulo athletes) y test_db_roles.sh cubre sus grants.
 # S5-W0-2: el stack incluye openbao (red custody 172.31.13.0/24) y debe llegar a healthy sin inicializar.
 # --provider openbao suma scripts/ci/openbao-smoke.sh (init 5/3, bootstrap, tokens, reinicio sellado y
 # desello). Con el api en CRYPTO_PROVIDER=openbao (overlay compose.openbao.yml) comprueba además que
@@ -404,6 +406,14 @@ else
   esac
 fi
 unset nueva token_pendiente respuesta_clave
+# S9-V3: solo para la prueba de rollback (SMOKE_DOWN=0): deja la clave ya cambiada del admin en un archivo 600 dentro de
+# SMOKE_DIR, para que un paso posterior inicie sesión sin imprimirla. Sin la variable no se escribe nada.
+if [ -n "${SMOKE_ADMIN_PASSWORD_FILE:-}" ]; then
+  case "$SMOKE_ADMIN_PASSWORD_FILE" in
+    "$SMOKE_DIR"/?*) ( umask 077; printf '%s' "$clave" > "$SMOKE_ADMIN_PASSWORD_FILE" ) ;;
+    *) muere "SMOKE_ADMIN_PASSWORD_FILE debe estar bajo SMOKE_DIR" ;;
+  esac
+fi
 
 # --- TV por token de dispositivo (S8-C2, V3): 200 con token, 401 sin él y el token nunca en el log de Nginx --------
 # El token viaja por un archivo 600 y por `-H @-`: nunca en la línea de comandos ni en la salida.
@@ -433,6 +443,14 @@ else
   fi
 fi
 rm -f "$archivo_tv"; unset acceso_tv codigo_tv sin_tv en_log
+
+# --- módulo athletes (S9-V3): llave athlete.metric sin init-keys, 409 sin autorización, reveal, blobs apx1 y rotate-key ----
+if DC="$DC_STR" OPS_ENV_FILE="$SMOKE_DIR/.env.ops" ATHLETES_SMOKE_ADMIN_EMAIL="$ADMIN_EMAIL" ATHLETES_SMOKE_ADMIN_PASSWORD="$clave" \
+  ATHLETES_SMOKE_BASE="$API_BASE" ATHLETES_SMOKE_ORIGIN="$API_ORIGIN" ATHLETES_SMOKE_CA="$CA_FILE" bash scripts/ci/athletes-smoke.sh; then
+  ok "athletes-smoke.sh (llave athlete.metric, consent_required, reveal, apx1, rotate-key)"
+else
+  falla "athletes-smoke.sh"
+fi
 
 # --- restauración en una segunda base del mismo db (restore.sh con firma e inspección) ------------------------------
 # Con --tls la sección 5 entra por Caddy: E2E_BASE_URL, E2E_ORIGIN y E2E_CA_FILE (en LAN quedan vacías y manda el valor por omisión).

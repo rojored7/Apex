@@ -130,6 +130,25 @@ prohibida apex_api "INSERT payments con void_reason (S5-D202)" "INSERT INTO paym
 prohibida apex_api "UPDATE public.alembic_version" "UPDATE public.alembic_version SET version_num = 'x'"
 prohibida apex_api "INSERT en worker.job_runs" "$JOB_INSERT"
 prohibida apex_api "CREATE TABLE public.x()" "CREATE TABLE public.x()"
+# S9-V3 (esquema athletes, 0042 a 0044): las medidas y los records se insertan y se actualizan por columna;
+# nadie borra. Las sentencias llevan WHERE false: se prueba el privilegio, no las guardas de fila.
+BM_COLS="id, created_at, updated_at, created_by, member_id, measured_on, recorded_by, weight_g, height_cm, body_fat_pct, notes"
+PR_COLS="id, created_at, updated_at, created_by, member_id, kind, movement_id, benchmark_id, wod_id, value_g, level, seconds, rounds, reps, load_g, capped, achieved_on, source, result_id"
+permitida apex_api "SELECT en athletes.body_metrics" "SELECT count(*) FROM athletes.body_metrics"
+permitida apex_api "INSERT por columna en athletes.body_metrics" "INSERT INTO athletes.body_metrics ($BM_COLS) SELECT $BM_COLS FROM athletes.body_metrics WHERE false"
+permitida apex_api "UPDATE (weight_g, voided_at) en athletes.body_metrics" "UPDATE athletes.body_metrics SET weight_g = weight_g, voided_at = voided_at, voided_by = voided_by, updated_at = updated_at WHERE false"
+prohibida apex_api "UPDATE athletes.body_metrics SET member_id" "UPDATE athletes.body_metrics SET member_id = member_id WHERE false"
+prohibida apex_api "UPDATE athletes.body_metrics SET measured_on" "UPDATE athletes.body_metrics SET measured_on = measured_on WHERE false"
+prohibida apex_api "DELETE FROM athletes.body_metrics" "DELETE FROM athletes.body_metrics WHERE false"
+prohibida apex_api "TRUNCATE athletes.body_metrics" "TRUNCATE athletes.body_metrics"
+permitida apex_api "SELECT en athletes.personal_records" "SELECT count(*) FROM athletes.personal_records"
+permitida apex_api "INSERT por columna en athletes.personal_records" "INSERT INTO athletes.personal_records ($PR_COLS) SELECT $PR_COLS FROM athletes.personal_records WHERE false"
+permitida apex_api "UPDATE (invalidated_*) en athletes.personal_records" "UPDATE athletes.personal_records SET invalidated_at = invalidated_at, invalidated_reason = invalidated_reason, invalidated_by = invalidated_by, invalidated_by_result_id = invalidated_by_result_id, updated_at = updated_at WHERE false"
+prohibida apex_api "INSERT de invalidated_at en athletes.personal_records" "INSERT INTO athletes.personal_records (id, invalidated_at) SELECT id, invalidated_at FROM athletes.personal_records WHERE false"
+prohibida apex_api "UPDATE athletes.personal_records SET value_g" "UPDATE athletes.personal_records SET value_g = value_g WHERE false"
+prohibida apex_api "UPDATE athletes.personal_records SET member_id" "UPDATE athletes.personal_records SET member_id = member_id WHERE false"
+prohibida apex_api "DELETE FROM athletes.personal_records" "DELETE FROM athletes.personal_records WHERE false"
+prohibida apex_api "TRUNCATE athletes.personal_records" "TRUNCATE athletes.personal_records"
 
 # --- apex_worker --------------------------------------------------------------------------------
 prohibida apex_worker "UPDATE members.members SET first_name" "UPDATE members.members SET first_name = 'x'"
@@ -143,6 +162,11 @@ prohibida apex_worker "SELECT en payments.payments" "SELECT count(*) FROM paymen
 # S8-C2 (V3): el worker no lee WODs ni resultados (la TV y el panel los sirven desde el api).
 prohibida apex_worker "SELECT en wods.wods" "SELECT count(*) FROM wods.wods"
 prohibida apex_worker "SELECT en results.wod_results" "SELECT count(*) FROM results.wod_results"
+# S9-V3: el worker no ve el esquema athletes (sin USAGE): ni medidas cifradas ni records.
+prohibida apex_worker "SELECT en athletes.body_metrics" "SELECT count(*) FROM athletes.body_metrics"
+prohibida apex_worker "SELECT en athletes.personal_records" "SELECT count(*) FROM athletes.personal_records"
+prohibida apex_worker "INSERT en athletes.body_metrics" "INSERT INTO athletes.body_metrics (id) SELECT id FROM athletes.body_metrics WHERE false"
+prohibida apex_worker "DELETE FROM athletes.personal_records" "DELETE FROM athletes.personal_records WHERE false"
 permitida apex_worker "SELECT en crypto.crypto_keys (S5-D34)" "SELECT count(*) FROM crypto.crypto_keys"
 prohibida apex_worker "UPDATE crypto.crypto_keys SET updated_at" "UPDATE crypto.crypto_keys SET updated_at = now() WHERE false"
 permitida apex_worker "SELECT por columna en members.members (S5-D204)" "SELECT id, first_name, last_name, sex, phone, email, status, deleted_at, data_consent_at, created_at, updated_at FROM members.members"
@@ -158,6 +182,11 @@ prohibida apex_backup "INSERT en audit.audit_log" "$AUDIT_INSERT"
 prohibida apex_backup "INSERT en worker.job_runs" "$JOB_INSERT"
 prohibida apex_backup "UPDATE members.members" "UPDATE members.members SET updated_at = now() WHERE false"
 prohibida apex_backup "DELETE en auth.refresh_tokens" "DELETE FROM auth.refresh_tokens WHERE false"
+# S9-V3: el respaldo lee las dos tablas de athletes (pg_read_all_data y USAGE) y no escribe en ellas.
+permitida apex_backup "SELECT en athletes.body_metrics" "SELECT count(*) FROM athletes.body_metrics"
+permitida apex_backup "SELECT en athletes.personal_records" "SELECT count(*) FROM athletes.personal_records"
+prohibida apex_backup "UPDATE athletes.body_metrics" "UPDATE athletes.body_metrics SET updated_at = now() WHERE false"
+prohibida apex_backup "DELETE FROM athletes.personal_records" "DELETE FROM athletes.personal_records WHERE false"
 
 # --- propietario de los esquemas (S5-W0-4; S5-D6, D62, D89, D96, D101; M-12) ---------------------
 # DB_OWNER_MODE=nueva (por omision): pila nueva, el dueno es `apex_owner` (NOSUPERUSER) y MIGRATE_DB_USER

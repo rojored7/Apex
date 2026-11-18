@@ -637,6 +637,13 @@ assert_contains "prod-smoke.sh imprime la versión de Compose" "$smk_s6" "compos
 assert_contains "prod-smoke.sh comprueba el layout custody del volumen keys" "$smk_s6" "/run/apex/keys/custody"
 assert_contains "prod-smoke.sh comprueba el layout jwt del volumen keys" "$smk_s6" "/run/apex/keys/jwt"
 assert_contains "prod-smoke.sh prueba la migración desde un volumen plano" "$smk_s6" "migrate-layout"
+# S9-V3: el humo del módulo athletes cuelga de prod-smoke y de los roles de base.
+assert_contains "prod-smoke.sh llama a athletes-smoke.sh (S9-V3)" "$smk_s6" "scripts/ci/athletes-smoke.sh"
+ath_smk="$(cat "$ROOT/scripts/ci/athletes-smoke.sh")"
+assert_contains "athletes-smoke.sh comprueba la llave athlete.metric" "$ath_smk" "athlete.metric"
+assert_contains "athletes-smoke.sh comprueba consent_required" "$ath_smk" "consent_required"
+assert_contains "athletes-smoke.sh rota la llave con rotate-key" "$ath_smk" "rotate-key athlete.metric"
+assert_contains "test_db_roles.sh cubre athletes.body_metrics" "$(cat "$ROOT/scripts/ci/test_db_roles.sh")" "athletes.body_metrics"
 
 echo "-- estatico de infra/deploy.sh"
 fuente="$(cat "$SRC_DEPLOY")"

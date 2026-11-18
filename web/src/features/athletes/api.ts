@@ -1,7 +1,7 @@
 // S9-F1 (US-178, US-179, US-184): datos de la pestaña Atleta.
 // - useAthleteSummary: GET /athletes/{id}/summary (conteos y tres récords vigentes; ninguna medida).
 // - useMetrics: GET /athletes/{id}/metrics?limit&offset (solo `has_*`, paginada en el servidor).
-// - useAddMetric / useVoidMetric: escrituras con useSensitiveMutation; al terminar bien relee todo lo del atleta (invalidateAthleteViews).
+// - useAddMetric / useVoidMetric: escrituras con useSensitiveMutation; al terminar bien relee el resumen y las medidas de ESE socio (invalidateMetricViews).
 // - useRevealMetric: POST .../metrics/{id}/reveal con UN campo. El valor en claro lo recibe solo quien llama (MetricField); la mutación
 //   no lo deja en la caché de TanStack (gcTime 0 y reset() de useSensitiveMutation) y nunca va en una clave ni en la URL (L-7).
 import { keepPreviousData, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from "@tanstack/react-query";
@@ -13,7 +13,8 @@ import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { invalidResponseError, parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
-import { invalidateAthleteViews, invalidateRecordViews } from "../../shared/data/athletes";
+import { invalidateMetricViews, invalidateRecordViews } from "../../shared/data/athletes";
+import { collectPages } from "../../shared/data/collectPages";
 import { isStaleRecordError } from "./recordErrors";
 import {
   athleteSummarySchema,
@@ -64,7 +65,7 @@ export function useAddMetric(memberId: string): UseMutationResult<MetricView, Er
   return useSensitiveMutation<MetricView, Error, MetricCreate>({
     mutationFn: async (body) => parseResponse(metricSchema, await api.post<unknown>(`${base(memberId)}/metrics`, { body })),
     onSuccess: () => {
-      invalidateAthleteViews(queryClient);
+      invalidateMetricViews(queryClient, memberId);
     },
   });
 }
@@ -77,12 +78,12 @@ export function useVoidMetric(memberId: string): UseMutationResult<MetricView, E
         return parseResponse(metricSchema, await api.post<unknown>(`${base(memberId)}/metrics/${encodeURIComponent(metricId)}/void`));
       } catch (error) {
         // Ya estaba anulada o ya no existe: la lista que se ve quedó vieja y los mensajes prometen actualizarla.
-        if (isApiError(error) && (error.code === API_ERROR_CODES.metricAlreadyVoided || error.status === HTTP_NOT_FOUND)) invalidateAthleteViews(queryClient);
+        if (isApiError(error) && (error.code === API_ERROR_CODES.metricAlreadyVoided || error.status === HTTP_NOT_FOUND)) invalidateMetricViews(queryClient, memberId);
         throw error;
       }
     },
     onSuccess: () => {
-      invalidateAthleteViews(queryClient);
+      invalidateMetricViews(queryClient, memberId);
     },
   });
 }
@@ -179,17 +180,11 @@ export interface AthleteBenchmarkList {
 
 /** Pide páginas de 200 hasta cubrir `total` o llegar al tope de páginas; sin repetir un benchmark. */
 async function collectBenchmarks(memberId: string, signal: AbortSignal): Promise<AthleteBenchmarkList> {
-  const rows = new Map<string, BenchmarkRowView>();
-  let total = 0;
-  for (let page = 0; page < BENCHMARKS_MAX_PAGES; page += 1) {
-    const offset = page * BENCHMARKS_PAGE_LIMIT;
-    if (page > 0 && offset >= total) break;
-    const query = listParams({ limit: BENCHMARKS_PAGE_LIMIT, offset });
-    const result = parseResponse(pageSchema(benchmarkRowSchema), await api.get<unknown>(`${base(memberId)}/benchmarks`, { query, signal }));
-    total = result.total;
-    for (const row of result.items) rows.set(row.benchmark_id, row);
-  }
-  return { items: [...rows.values()], total, truncated: total > BENCHMARKS_MAX_PAGES * BENCHMARKS_PAGE_LIMIT };
+  const { items, total, truncated } = await collectPages(
+    async (offset) => parseResponse(pageSchema(benchmarkRowSchema), await api.get<unknown>(`${base(memberId)}/benchmarks`, { query: listParams({ limit: BENCHMARKS_PAGE_LIMIT, offset }), signal })),
+    { limit: BENCHMARKS_PAGE_LIMIT, maxPages: BENCHMARKS_MAX_PAGES, idOf: (row) => row.benchmark_id },
+  );
+  return { items, total, truncated };
 }
 
 // S9-F3 (US-183): benchmarks del socio. Las claves ["athlete-benchmarks", id, ...] las relee invalidateRecordViews.

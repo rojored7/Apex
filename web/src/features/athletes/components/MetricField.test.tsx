@@ -270,6 +270,17 @@ describe("MetricField · errores", () => {
     expect(document.body).not.toHaveTextContent(WEIGHT);
   });
 
+  it("V7 M11: 403 sin la ficha cargada (memberUnknown) no dice «dado de baja»: pide recargar la ficha", async () => {
+    const user = fakeTimersUser();
+    renderAthlete(<MetricField {...base} memberDeleted memberUnknown />, { handlers: { [REVEAL]: apiError(403, "forbidden") } });
+
+    await user.click(screen.getByRole("button", { name: "Mostrar peso" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No pudimos cargar la ficha del socio");
+    expect(alert).not.toHaveTextContent("dado de baja");
+  });
+
   it("403 con el socio vivo dice que no tiene permiso, sin hablar de la baja", async () => {
     const user = fakeTimersUser();
     renderAthlete(<MetricField {...base} />, { handlers: { [REVEAL]: apiError(403, "forbidden") } });

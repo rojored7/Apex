@@ -7,17 +7,18 @@
 // - El formulario vive solo mientras el panel está abierto: al cerrar o guardar se desmonta (reset) y la mutación pasa por
 //   useSensitiveMutation (gcTime 0): ningún valor queda para la próxima apertura.
 // DESIGN-GAP: 3RM, 5RM, «máx. reps» y la unidad preferida del diseño; «editar» un récord (se invalida y se registra otro, S9-D13).
-import { useId, useRef, useState } from "react";
+import { useId } from "react";
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
+import { LEVEL_LABELS, RESULT_LEVELS } from "../../../shared/data/results";
 import { useBenchmarkOptions, useKgMovementOptions, type CatalogOptions } from "../../../shared/data/catalog";
 import { zodResolver } from "../../../shared/lib/zodResolver";
 import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { Segmented } from "../../../shared/ui/Segmented";
-import { SidePanel } from "../../../shared/ui/SidePanel";
 import { useAddRecord } from "../api";
 import { RECORD_ERROR_MESSAGES, recordFieldError, recordSaveError } from "../recordErrors";
 import { EMPTY_RECORD_FORM, parseRecordForm, recordFormSchema, type RecordFormValues, type RecordKind, type RecordLevel } from "../schemas";
+import { AthleteFormPanel, useSaveFlow } from "./AthleteFormPanel";
 import styles from "./AthletePanel.module.css";
 
 export interface RecordPanelProps {
@@ -35,11 +36,7 @@ const KIND_OPTIONS = [
   { value: "rm", label: "RM" },
   { value: "benchmark", label: "Benchmark" },
 ];
-const LEVEL_OPTIONS = [
-  { value: "rx", label: "RX" },
-  { value: "rx_plus", label: "RX+" },
-  { value: "scaled", label: "Escalado" },
-];
+const LEVEL_OPTIONS = RESULT_LEVELS.map((level) => ({ value: level, label: LEVEL_LABELS[level] }));
 
 type RecordForm = UseFormReturn<RecordFormValues>;
 
@@ -186,60 +183,45 @@ function RecordPanelForm({ memberId, onClose, onSaved }: Omit<RecordPanelProps, 
     formState: { errors, isDirty },
   } = form;
   const kind = useWatch({ control, name: "kind" });
-  const [generalError, setGeneralError] = useState<string | null>(null);
-  const inFlight = useRef(false);
-  const isPending = add.isPending;
+  const flow = useSaveFlow();
 
-  const save = async (values: RecordFormValues): Promise<void> => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setGeneralError(null);
-    try {
-      await add.mutateAsync(parseRecordForm(values));
-      onSaved();
-    } catch (error) {
-      const target = recordFieldError(error);
-      if (target) form.setError(target.path, { type: "server", message: target.message }, { shouldFocus: true });
-      else setGeneralError(recordSaveError(error).message);
-    } finally {
-      inFlight.current = false;
-    }
-  };
+  const save = (values: RecordFormValues): Promise<void> =>
+    flow.run(
+      async () => {
+        await add.mutateAsync(parseRecordForm(values));
+        onSaved();
+      },
+      (error) => {
+        const target = recordFieldError(error);
+        if (target) form.setError(target.path, { type: "server", message: target.message }, { shouldFocus: true });
+        else flow.setGeneralError(recordSaveError(error).message);
+      },
+    );
 
   return (
-    <SidePanel
-      open
+    <AthleteFormPanel
       title={RECORD_PANEL_TITLE}
-      isDirty={!isPending && isDirty}
-      onClose={() => {
-        if (!isPending) onClose();
-      }}
-      footer={
-        <Button type="submit" form={formId} loading={isPending}>
-          Guardar récord
-        </Button>
-      }
+      formId={formId}
+      submitLabel="Guardar récord"
+      isPending={add.isPending}
+      isDirty={isDirty}
+      generalError={flow.generalError}
+      onClose={onClose}
+      onSubmit={(event) => void form.handleSubmit(save)(event)}
     >
-      <form id={formId} className={styles.form} noValidate aria-label={RECORD_PANEL_TITLE} onSubmit={(event) => void form.handleSubmit(save)(event)}>
-        {generalError ? (
-          <p className={styles.error} role="alert">
-            {generalError}
-          </p>
-        ) : null}
-        <Segmented
-          label="Tipo de récord"
-          options={KIND_OPTIONS}
-          value={kind}
-          onChange={(next) => {
-            setValue("kind", next as RecordKind, { shouldDirty: true });
-            clearErrors();
-          }}
-        />
-        {kind === "rm" ? <RmFields form={form} movements={movements} /> : <BenchmarkFields form={form} benchmarks={benchmarks} />}
-        <Field label="Fecha del récord" type="date" error={errors.achieved_on?.message} {...register("achieved_on")} />
-        <p className={styles.note}>El récord manual se puede invalidar después si se registró por error; no se edita.</p>
-      </form>
-    </SidePanel>
+      <Segmented
+        label="Tipo de récord"
+        options={KIND_OPTIONS}
+        value={kind}
+        onChange={(next) => {
+          setValue("kind", next as RecordKind, { shouldDirty: true });
+          clearErrors();
+        }}
+      />
+      {kind === "rm" ? <RmFields form={form} movements={movements} /> : <BenchmarkFields form={form} benchmarks={benchmarks} />}
+      <Field label="Fecha del récord" type="date" error={errors.achieved_on?.message} {...register("achieved_on")} />
+      <p className={styles.note}>El récord manual se puede invalidar después si se registró por error; no se edita.</p>
+    </AthleteFormPanel>
   );
 }
 

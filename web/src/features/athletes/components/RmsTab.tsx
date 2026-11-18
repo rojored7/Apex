@@ -9,6 +9,7 @@ import { formatLoadKg } from "../../../shared/data/score";
 import { useListParams } from "../../../shared/hooks/useListParams";
 import { Button } from "../../../shared/ui/Button";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
+import { originText } from "../recordFormat";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { useRms } from "../api";
 import { rmsListError } from "../recordErrors";
@@ -27,7 +28,7 @@ const COLUMNS: Column<RmView>[] = [
   { key: "movement_name", header: "Movimiento", render: (row) => row.movement_name ?? <span className={styles.muted}>{NO_NAME}</span> },
   { key: "value_g", header: "1RM", render: (row) => <span className={styles.nowrap}>{formatLoadKg(row.value_g)}</span> },
   { key: "achieved_on", header: "Último cambio", render: (row) => <span className={styles.nowrap}>{formatDate(row.achieved_on)}</span> },
-  { key: "source", header: "Origen", render: (row) => (row.source === "manual" ? "Manual" : "Automático del WOD") },
+  { key: "source", header: "Origen", render: (row) => originText(row) },
 ];
 
 export function RmsTab({ memberId }: RmsTabProps) {

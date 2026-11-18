@@ -7,58 +7,14 @@
 // (el WOD de 2033 se queda: el api no borra WODs). Segundo caso: registrar un récord manual por el panel y luego invalidarlo.
 // Si no hay un movimiento activo en kg, lo crea con un nombre ficticio único.
 // Sin E2E_BASE_URL se omite. ESCRITO POR EL ROJO: la ejecuta el orquestador contra el stack (P-E2E), no el agente de pruebas.
-import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
-import { crearSocio, darDeBajaSocio, diaLibreDeWod, esperarTransiciones, loginComo, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
+import { expect, test } from "@playwright/test";
+import { axeViolations } from "../helpers/axe";
+import { ahoraMas, asegurarMovimientoKg, cancelarClase, crearClaseDeHoy, crearSocio, darDeBajaSocio, diaBogota, diaLibreDeWod, loginComo, PRIMER_DIA_WOD, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
-const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const API = "/api/v1";
-const MS_MINUTO = 60_000;
-const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1_000;
-const FIRST_DAY = Date.UTC(2033, 0, 1);
 const LOAD_G = 100_000;
 const CORRECTED_G = 90_000;
-
-interface Movimiento {
-  id: string;
-  name: string;
-}
-
-/** Un movimiento activo que se mide en kg: el primero que haya o, si no hay ninguno, uno nuevo con nombre ficticio único. */
-async function asegurarMovimientoKg(page: Page, headers: Record<string, string>): Promise<Movimiento> {
-  const lista = (await (await page.request.get(`${API}/movements?limit=200&offset=0&active=true`, { headers })).json()) as { items: { id: string; name: string; unit: string }[] };
-  const existente = lista.items.find((item) => item.unit === "kg");
-  if (existente !== undefined) return existente;
-  const nombre = `Mov kg E2E ${Date.now().toString(36)}`;
-  const creado = await page.request.post(`${API}/movements`, { headers, data: { name: nombre, category: "weightlifting", unit: "kg" } });
-  expect(creado.ok()).toBe(true);
-  return { id: ((await creado.json()) as { id: string }).id, name: nombre };
-}
-
-/**
- * Crea la clase de hoy en `inicio` o en el primer minuto libre de los cinco siguientes. Una clase con resultados no se puede
- * cancelar (409 `locked_by_results`, por diseño), así que la de una corrida anterior sigue «programada» y repetir el minuto da
- * 409 `session_duplicate`.
- */
-async function crearClaseDeHoy(page: Page, headers: Record<string, string>, inicio: Date, nombre: string): Promise<string> {
-  for (let intento = 0; intento < 5; intento += 1) {
-    const startsAt = new Date(inicio.getTime() + intento * MS_MINUTO).toISOString();
-    const respuesta = await page.request.post(`${API}/class-sessions`, { headers, data: { starts_at: startsAt, duration_min: 60, capacity: 10, name: nombre } });
-    if (respuesta.ok()) return ((await respuesta.json()) as { id: string }).id;
-    const codigo = ((await respuesta.json().catch(() => ({}))) as { error?: { code?: string } }).error?.code;
-    if (respuesta.status() !== 409 || codigo !== "session_duplicate") throw new Error(`POST /class-sessions respondió ${String(respuesta.status())}.`);
-  }
-  throw new Error("POST /class-sessions: los cinco minutos siguientes ya tienen una clase de esta spec.");
-}
-
-const diaBogota = (instante: Date): string => new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
-
-async function axeViolations(page: Page): Promise<string[]> {
-  await esperarTransiciones(page);
-  const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  return result.violations.map((v) => `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
-}
 
 test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
   test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL) con B1 a B5 y C2; en preview no hay api");
@@ -74,12 +30,12 @@ test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
       // La baja falló: la cancelación de clases se intenta igual y el fallo se relanza al final.
       fallos.push(error instanceof Error ? error : new Error(String(error)));
     }
-    // Las clases no se borran: se cancelan. Con resultados no se puede (409 locked_by_results, por diseño): solo eso se tolera; cualquier otra respuesta falla.
-    if (porCancelar.length > 0) {
-      const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
-      for (const id of porCancelar) {
-        const cancelada = await page.request.post(`${API}/class-sessions/${id}/cancel`, { headers, data: { reason: "limpieza E2E" } });
-        if (!cancelada.ok() && cancelada.status() !== 409) fallos.push(new Error(`POST /class-sessions/{id}/cancel respondió ${String(cancelada.status())}.`));
+    // Con resultados la clase no se cancela (409 locked_by_results, por diseño, S9-D68): cancelarClase tolera solo eso; cualquier otra respuesta falla. Los WODs de 2033 no se borran (no hay borrado de WODs por diseño).
+    for (const id of porCancelar) {
+      try {
+        await cancelarClase(page, id);
+      } catch (error) {
+        fallos.push(error instanceof Error ? error : new Error(String(error)));
       }
     }
     if (fallos[0]) throw fallos[0];
@@ -87,7 +43,7 @@ test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
 
   test("un resultado de 100 kg crea el RM automático y corregirlo lo deja invalidado", async ({ page }) => {
     // La clase de hoy empieza dentro de 10 minutos (el check-in no bloquea por hora, N-38): pasadas las 23:49 de Bogotá cruzaría la medianoche.
-    const inicio = new Date(Math.floor((Date.now() + 10 * MS_MINUTO) / MS_MINUTO) * MS_MINUTO);
+    const inicio = ahoraMas(10);
     test.skip(diaBogota(inicio) !== diaBogota(new Date()), "después de las 23:49 de Bogotá la clase de hoy no cabe en el día");
     await page.setViewportSize({ width: 1440, height: 900 });
     const adminToken = await loginComo(page);
@@ -96,7 +52,7 @@ test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
     // Datos: un movimiento activo en kg, un WOD por carga con ese movimiento principal, una clase de hoy con el socio presente.
     const movimiento = await asegurarMovimientoKg(page, headers);
     const nombre = `Récords E2E ${Date.now().toString(36)}`;
-    const wodDate = await diaLibreDeWod(page, FIRST_DAY);
+    const wodDate = await diaLibreDeWod(page, PRIMER_DIA_WOD);
     const sesionId = await crearClaseDeHoy(page, headers, inicio, nombre);
     sesiones.push(sesionId);
     const wod = await page.request.post(`${API}/wods`, {

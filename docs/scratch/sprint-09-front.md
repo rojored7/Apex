@@ -315,3 +315,27 @@ Arreglos en el checkpoint `0a20569` (sello `web/athletes` con RecordsTab, Metric
 
 - `run-gates.sh 5b` sobre `4725fcd`: verde (EXIT=0). Api 12304 pasadas, cobertura 96 %; web 4994 pasadas en 277 archivos, cobertura de líneas 97,66 %.
 - Pendiente al cortar por tope de uso: informe del agente V7b (tiene `apex-migracion.flag`, migración 0044, api parada); E2E de V7f (`eda651d`, specs athlete-guards y athlete-live nuevas); merge del worktree; V1 a V9; Sprint 10.
+
+## S9-V7f · Correcciones de front de la revisión de Fase 4
+
+Base: `eafe605`. Línea base (athletes, shared, members y results): 116 archivos, 2047 passed. Al final, suite completa: 278 archivos, 5019 passed (exit 0); `npm run lint`, `npx tsc --noEmit` y `npm run build` exit 0; guardián `e2e-stack-guard`: 16 passed.
+
+| # | Hallazgo | Rojo medido | Arreglo |
+|---|---|---|---|
+| 1 | Foco perdido al anular una medición | MetricsTab: 1 failed (24 passed) | `ref` + `tabIndex={-1}` en el `<h2>` y foco tras anular con éxito (como RecordsTab) |
+| 2 | Choque del parámetro `benchmark` | MemberDetailPage: 3 failed (con el marcador de la hija Resultados añadido al montaje de prueba) | Atleta usa `?bm=`; la ficha pasa `ownParams={MEMBER_CHILD_PARAMS}` (`voided`, `benchmark`, `tab`, `kind`, `invalidated`, `bm`) a sus `Tabs` |
+| 3 | Huecos E2E | (no se ejecutan) | `athlete-guards.spec.ts` (baja, sin autorización, coach, anular) y `athlete-live.spec.ts` (RM sin recargar vía SPA) |
+| 4 | Aviso de serie truncada | refactor puro (ambas constantes valen 200) | usa `SERIES_MAX_ATTEMPTS` |
+| 5 | Reglas de marca duplicadas | `isCountUpTo`: prueba nueva | `MAX_ROUNDS`, `MAX_REPS`, `isCountUpTo` en `shared/data/score.ts`; `BENCHMARK_SCORE_TYPES`, `RESULT_LEVELS` y `LEVEL_LABELS` como única fuente |
+| 6 | Paginación duplicada | `collectPages.test.ts`: archivo falla (módulo inexistente) | `shared/data/collectPages.ts` con deduplicación por id; lo usan catálogo y benchmarks del atleta |
+| 7 | Errores y paneles repetidos | refactor puro con las pruebas existentes en verde | `commonErrors.ts` (mensajes y `fieldErrorIn`), `metricSaveError` devuelve `ApiError`, `AthleteFormPanel` y `useSaveFlow` |
+| 8 | Origen del récord en tres textos | SummaryCards: 1 failed | `originText` en `recordFormat.ts`; enlace «Ver» con `aria-label` «Ver el WOD de <récord>» (pruebas del resumen actualizadas por cambio de comportamiento) |
+| 9 | Avisos de anular e invalidar | AthleteTab: 3 failed | región `role="status"` fija («Avisos del atleta»), «Medición anulada.» y «Récord invalidado.»; se limpia al cambiar de subpestaña |
+| 10 | Datos tapados por un error de relectura | Resumen y serie: 2 failed (la lista ya cumplía; se fijó con prueba) | el error va junto a los datos. La prueba L10 anterior cambió de expectativa por este hallazgo |
+| 11a | «Mostrar peso» sin fecha | MetricsTab: 1 failed | `aria-label` «Mostrar peso del 1 oct 2026» (sin el valor) |
+| 11b | 403 sin ficha decía «dado de baja» | MetricField y AthleteTab: 2 failed | `memberUnknown` y mensaje propio |
+| 11c | `score_type` desigual | schemas: 2 failed | los tres esquemas con `z.enum(SCORE_KINDS)`; uno desconocido es respuesta inválida. La prueba «score_type desconocido» pasó a «none» |
+| 11d | Invalidación de medidas de todos los socios | MetricsTab: 1 failed | `invalidateMetricViews(queryClient, memberId)` |
+| 12 | Specs | guardián verde | helpers en `tests/e2e/helpers/stack.ts` (y `axe.ts` aparte para no cargar axe en vitest); `cancelarClase` tolera solo `locked_by_results` por `error.code`; kiosk-idle con try/finally y `TABLET_IDLE_MS` en `src/layouts/idle.ts`; soak acelerado recoge errores de consola |
+
+Pruebas de la ficha: los botones «Mostrar …» se buscan por `/^Mostrar peso/` en las pruebas y specs que los usaban con nombre exacto.

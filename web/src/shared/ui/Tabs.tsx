@@ -85,7 +85,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
       });
     } else {
       // S3-F7: igual que en modo `query`, la pestaña nueva empieza en la primera página de su lista. Los
-      // filtros de una lista (`voided`) se conservan: las otras pestañas no los leen (revisión, L6).
+      // parámetros propios de cada hija (`ownParams`, V7 M2) se borran; `limit` y lo demás se conservan.
       // (la ficha tiene dos listas paginadas, Membresías y Pagos); lo demás de la URL se conserva.
       const next = new URLSearchParams(location.search);
       next.delete("offset");

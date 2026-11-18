@@ -1,7 +1,7 @@
 // S9-F1 (US-178, US-184): invalidateAthleteViews relee todo lo que muestra datos del atleta, y guardar o anular un
 // resultado (invalidateResultViews) la llama: un RM derivado aparece sin recargar la ficha.
 import { QueryClient } from "@tanstack/react-query";
-import { invalidateAthleteViews, invalidateRecordViews } from "./athletes";
+import { invalidateAthleteViews, invalidateMetricViews, invalidateRecordViews } from "./athletes";
 import { invalidateResultViews } from "./results";
 
 const ATHLETE_KEYS = [["athlete-summary"], ["athlete-metrics"], ["athlete-rms"], ["athlete-records"], ["athlete-benchmarks"]] as const;
@@ -47,5 +47,21 @@ describe("invalidateRecordViews", () => {
     for (const key of [["athlete-summary"], ["athlete-rms"], ["athlete-records"], ["athlete-benchmarks"]] as const) expect(isStale(client, key), key[0]).toBe(true);
     expect(isStale(client, ["athlete-metrics"])).toBe(false);
     expect(client.getQueryCache().find({ queryKey: ["athlete-rms", "m2"] })?.state.isInvalidated).toBe(false);
+  });
+});
+
+// V7 (revisión de Fase 4, M11): guardar o anular una medida relee solo el resumen y las medidas de ESE socio.
+describe("invalidateMetricViews", () => {
+  it("invalida el resumen y las medidas del socio, y ni sus RMs, récords y benchmarks ni lo de otro socio", () => {
+    const client = seeded();
+    client.setQueryData(["athlete-metrics", "m2"], { ok: true });
+    client.setQueryData(["athlete-summary", "m2"], { ok: true });
+
+    invalidateMetricViews(client, "m1");
+
+    for (const key of [["athlete-summary"], ["athlete-metrics"]] as const) expect(isStale(client, key), key[0]).toBe(true);
+    for (const key of [["athlete-rms"], ["athlete-records"], ["athlete-benchmarks"]] as const) expect(isStale(client, key), key[0]).toBe(false);
+    expect(client.getQueryCache().find({ queryKey: ["athlete-metrics", "m2"] })?.state.isInvalidated).toBe(false);
+    expect(client.getQueryCache().find({ queryKey: ["athlete-summary", "m2"] })?.state.isInvalidated).toBe(false);
   });
 });

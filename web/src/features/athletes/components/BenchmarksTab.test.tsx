@@ -1,7 +1,7 @@
 // S9-F3 · US-183 (Atleta_Perfil.html, subpestaña «Benchmarks»): la serie de un benchmark del socio.
 // - GET /athletes/{id}/benchmarks?limit=200&offset=0 (los chips; se piden páginas de 200 hasta 1.000 y se avisa si no caben) y
 //   GET /athletes/{id}/benchmarks/{benchmark_id} (la serie: hasta 200 intentos por fecha ascendente, sin paginar).
-// - Chips en el grupo «Benchmark» con `?benchmark=<id>`; sin parámetro (o con uno que no está en la lista) vale el primero de la lista.
+// - Chips en el grupo «Benchmark» con `?bm=<id>`; sin parámetro (o con uno que no está en la lista) vale el primero de la lista.
 // - Tabla «Intentos del socio en <nombre>»: Fecha, Marca, Nivel y Diferencia, del intento más reciente al más antiguo (orden descendente, como el diseño).
 // - Diferencia con el intento anterior (formatScoreDelta) solo si el nivel no cambió; si cambió, «Cambió de nivel»; el primero, «Primera vez»;
 //   si no se puede comparar (rondas + repeticiones, DNF), «—».
@@ -92,7 +92,7 @@ describe("BenchmarksTab · chips y peticiones", () => {
     expect(within(chips).getAllByRole("button").map((b) => b.textContent)).toEqual(["Fran", "Helen"]);
   });
 
-  it("sin `?benchmark=` queda elegido el primero de la lista y pide solo su serie", async () => {
+  it("sin `?bm=` queda elegido el primero de la lista y pide solo su serie", async () => {
     const { mock } = renderTab();
 
     await screen.findByRole("table", { name: "Intentos del socio en Fran" });
@@ -102,30 +102,30 @@ describe("BenchmarksTab · chips y peticiones", () => {
     expect(mock.callsTo(`GET ${seriesPath(HELEN)}`)).toHaveLength(0);
   });
 
-  it("lee `?benchmark=` de la URL al cargar y pide la serie de ese benchmark", async () => {
-    const { mock } = renderTab({}, `${BASE}&benchmark=${HELEN}`);
+  it("lee `?bm=` de la URL al cargar y pide la serie de ese benchmark", async () => {
+    const { mock } = renderTab({}, `${BASE}&bm=${HELEN}`);
 
     expect(await screen.findByRole("table", { name: "Intentos del socio en Helen" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Helen" })).toHaveAttribute("aria-pressed", "true");
     expect(mock.callsTo(`GET ${seriesPath(FRAN)}`)).toHaveLength(0);
   });
 
-  it("un `?benchmark=` que no está en la lista se ignora: elige el primero y nunca pide esa serie", async () => {
+  it("un `?bm=` que no está en la lista se ignora: elige el primero y nunca pide esa serie", async () => {
     const stray = benchmarkId(9);
-    const { mock } = renderTab({}, `${BASE}&benchmark=${stray}`);
+    const { mock } = renderTab({}, `${BASE}&bm=${stray}`);
 
     expect(await screen.findByRole("table", { name: "Intentos del socio en Fran" })).toBeInTheDocument();
     expect(mock.callsTo(`GET ${seriesPath(stray)}`)).toHaveLength(0);
   });
 
-  it("pulsar «Helen» deja `benchmark=<id>` en la URL y pide su serie", async () => {
+  it("pulsar «Helen» deja `bm=<id>` en la URL y pide su serie", async () => {
     const { mock, user } = renderTab();
     await screen.findByRole("table", { name: "Intentos del socio en Fran" });
 
     await user.click(screen.getByRole("button", { name: "Helen" }));
 
     expect(await screen.findByRole("table", { name: "Intentos del socio en Helen" })).toBeInTheDocument();
-    expect(screen.getByTestId("where")).toHaveTextContent(`benchmark=${HELEN}`);
+    expect(screen.getByTestId("where")).toHaveTextContent(`bm=${HELEN}`);
     expect(screen.getByRole("button", { name: "Helen" })).toHaveAttribute("aria-pressed", "true");
     expect(mock.callsTo(`GET ${seriesPath(HELEN)}`)).toHaveLength(1);
   });
@@ -291,7 +291,7 @@ describe("BenchmarksTab · la tabla de intentos", () => {
   });
 
   it("un solo intento: una fila, «Mejor» y «Primera vez»", async () => {
-    renderTab({ [LIST]: listOf([HELEN_ROW]) }, `${BASE}&benchmark=${HELEN}`);
+    renderTab({ [LIST]: listOf([HELEN_ROW]) }, `${BASE}&bm=${HELEN}`);
 
     await screen.findByRole("table", { name: "Intentos del socio en Helen" });
     expect(within(table("Helen")).getAllByRole("row")).toHaveLength(2);
@@ -314,7 +314,7 @@ describe("BenchmarksTab · la gráfica", () => {
   });
 
   it("con Helen, un solo punto, la gráfica lo dice en singular", async () => {
-    renderTab({ [LIST]: listOf([HELEN_ROW]) }, `${BASE}&benchmark=${HELEN}`);
+    renderTab({ [LIST]: listOf([HELEN_ROW]) }, `${BASE}&bm=${HELEN}`);
     await screen.findByRole("table", { name: "Intentos del socio en Helen" });
 
     expect(screen.getByRole("img", { name: /Helen/ }).getAttribute("aria-label")).toContain("1 punto");
@@ -537,8 +537,8 @@ describe("BenchmarksTab · revisión S9-F3 (gráfica por nivel, truncado, orden 
     expect(cellsOf(rowOf("1 jun 2026"))[3]).toBe("Sin cambio");
   });
 
-  it("un score_type desconocido no rompe: la marca y la diferencia dicen «—» y no hay gráfica", async () => {
-    const odd = benchmarkRow({ score_type: "parsec" });
+  it("un score_type «none» no rompe: la marca y la diferencia dicen «—» y no hay gráfica", async () => {
+    const odd = benchmarkRow({ score_type: "none" });
     const series = seriesOf(odd, [attempt(91, { wod_date: "2026-05-01", seconds: 300 }), attempt(92, { wod_date: "2026-06-01", seconds: 290, is_best: true })]);
     renderTab({ [LIST]: listOf([odd]), [`GET ${seriesPath(FRAN)}`]: ok(series) });
     await screen.findByRole("table", { name: "Intentos del socio en Fran" });
@@ -546,6 +546,14 @@ describe("BenchmarksTab · revisión S9-F3 (gráfica por nivel, truncado, orden 
     expect(cellsOf(rowOf("1 jun 2026"))[1]).toContain("—");
     expect(cellsOf(rowOf("1 jun 2026"))[3]).toBe("—");
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("V7 M11: un score_type fuera del contrato es una respuesta inválida (un aviso con Reintentar), no una tabla de «—»", async () => {
+    const odd = benchmarkRow({ score_type: "parsec" });
+    renderTab({ [LIST]: listOf([odd]) });
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("serie 429: dice cuánto esperar", async () => {
@@ -597,7 +605,7 @@ describe("BenchmarksTab · revisión S9-F3 (gráfica por nivel, truncado, orden 
     expect(Number(best?.getAttribute("cy"))).toBe(Math.min(...circles.map((c) => Number(c.getAttribute("cy")))));
   });
 
-  it("L10: si la relectura falla con datos viejos no se pintan gráfica ni notas, solo el error", async () => {
+  it("V7 M10: si la relectura falla con datos ya cargados se muestra el error JUNTO a la tabla, la gráfica y las notas (no las tapa)", async () => {
     let calls = 0;
     const { queryClient } = renderTab({
       [`GET ${seriesPath(FRAN)}`]: () => {
@@ -609,10 +617,27 @@ describe("BenchmarksTab · revisión S9-F3 (gráfica por nivel, truncado, orden 
 
     await queryClient.invalidateQueries({ queryKey: ["athlete-benchmarks"] });
 
-    expect(await screen.findByText("No pudimos cargar la serie de este benchmark. Intenta de nuevo en un momento.")).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    expect(screen.queryByText("Solo se compara entre intentos del mismo nivel.")).not.toBeInTheDocument();
-    expect(screen.queryByText("Se muestran los 200 intentos más recientes.")).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cargar la serie de este benchmark. Intenta de nuevo en un momento.");
+    expect(screen.getByRole("table", { name: "Intentos del socio en Fran" })).toBeInTheDocument();
+    expect(screen.getByRole("img")).toBeInTheDocument();
+    expect(screen.getByText("Solo se compara entre intentos del mismo nivel.")).toBeInTheDocument();
+  });
+
+  it("V7 M10: si falla la relectura de la LISTA los chips y la serie ya cargados siguen visibles junto al aviso", async () => {
+    let calls = 0;
+    const { queryClient } = renderTab({
+      [LIST]: (call) => {
+        calls += 1;
+        return calls === 1 ? pageReply(call, [FRAN_ROW]) : apiError(500, "internal_error");
+      },
+    });
+    await screen.findByRole("table", { name: "Intentos del socio en Fran" });
+
+    await queryClient.invalidateQueries({ queryKey: ["athlete-benchmarks", MEMBER_ID, "list"] });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cargar los benchmarks.");
+    expect(screen.getByRole("group", { name: "Benchmark" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Intentos del socio en Fran" })).toBeInTheDocument();
   });
 
   it("L11: el error es un aviso (role=alert) con Reintentar, sin tabla", async () => {

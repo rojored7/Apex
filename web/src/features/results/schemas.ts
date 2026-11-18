@@ -5,7 +5,7 @@
 // - toScoreValues: los valores ya validados como los espera `PUT /results`.
 // DESIGN-GAP: «Nota (opcional)» y «anterior en Helen» no están en el contrato (EP-24); el récord automático llega con EP-24.
 import { z } from "zod";
-import { formatClock, formatLoadKg, gramsToKgInput, kgInputToGrams, parseClock } from "../../shared/data/score";
+import { formatClock, formatLoadKg, gramsToKgInput, isCountUpTo, kgInputToGrams, MAX_REPS, MAX_ROUNDS, parseClock } from "../../shared/data/score";
 import type { components } from "../../core/api/types";
 
 export const RESULT_LEVELS = ["rx", "rx_plus", "scaled"] as const;
@@ -18,9 +18,6 @@ export type ScoringType = (typeof SCORING_TYPES)[number];
 
 /** El código de Zod para una regla propia (no es un código del api). */
 const ISSUE_CODE = "custom" as const;
-const MAX_ROUNDS = 1000;
-const MAX_REPS = 100_000;
-const COUNT = /^\d{1,6}$/;
 
 export const SCORE_MESSAGES = {
   time: "Escribe el tiempo como mm:ss, por ejemplo 11:42.",
@@ -120,8 +117,6 @@ export function scoreFormFrom(result: ResultView | null): ScoreFormValues {
   };
 }
 
-const inRange = (text: string, max: number): boolean => COUNT.test(text.trim()) && Number(text.trim()) <= max;
-
 export function scoreFormSchema(scoreType: ScoringType, timeCapS: number | null) {
   return z
     .object({
@@ -139,7 +134,7 @@ export function scoreFormSchema(scoreType: ScoringType, timeCapS: number | null)
       };
       if (scoreType === "time") {
         if (values.capped) {
-          if (!inRange(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.cappedReps);
+          if (!isCountUpTo(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.cappedReps);
           return;
         }
         const seconds = parseClock(values.time);
@@ -147,10 +142,10 @@ export function scoreFormSchema(scoreType: ScoringType, timeCapS: number | null)
         else if (timeCapS !== null && seconds > timeCapS) fail("time", SCORE_MESSAGES.overCap(formatClock(timeCapS)));
       }
       if (scoreType === "rounds_reps") {
-        if (!inRange(values.rounds, MAX_ROUNDS)) fail("rounds", SCORE_MESSAGES.rounds);
-        if (!inRange(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.reps);
+        if (!isCountUpTo(values.rounds, MAX_ROUNDS)) fail("rounds", SCORE_MESSAGES.rounds);
+        if (!isCountUpTo(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.reps);
       }
-      if (scoreType === "reps" && !inRange(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.reps);
+      if (scoreType === "reps" && !isCountUpTo(values.reps, MAX_REPS)) fail("reps", SCORE_MESSAGES.reps);
       if (scoreType === "load" && kgInputToGrams(values.load) === null) fail("load", SCORE_MESSAGES.load);
     });
 }

@@ -6,7 +6,7 @@
 // S9-F2: RMs por movimiento y Récords con su contenido, y «+ Registrar récord» (panel RecordPanel). DESIGN-GAP: «Exportar progreso».
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
-import { apiError, BENCHMARKS_PATH, benchmarkId, CATALOG_HANDLERS, CLEAR, derivedRm, FRAN_ROW, FRAN_SERIES, MEMBER_ID, METRICS_PATH, metric, metricId, movementId, pageReply, record, RECORDS_PATH, revealPath, rm, RMS_PATH, seriesPath, SUMMARY_PATH, summary } from "../../../test/athletes";
+import { apiError, BENCHMARKS_PATH, benchmarkId, CATALOG_HANDLERS, CLEAR, derivedRm, FRAN_ROW, FRAN_SERIES, invalidatePath, MEMBER_ID, METRICS_PATH, metric, metricId, movementId, pageReply, record, RECORDS_PATH, revealPath, rm, RMS_PATH, seriesPath, SUMMARY_PATH, summary, voidPath } from "../../../test/athletes";
 import { DELETED_TAB_MEMBER, TAB_MEMBER, renderMemberTab } from "../../../test/memberTabs";
 import { setViewportWidth, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
@@ -209,7 +209,7 @@ describe("AthleteTab · datos sensibles", () => {
     const { user } = renderTab(`${BASE}?tab=medidas`);
     const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
 
-    await user.click(within(first).getByRole("button", { name: "Mostrar peso" }));
+    await user.click(within(first).getByRole("button", { name: /^Mostrar peso/ }));
     await within(first).findByText("61,2 kg");
 
     expect(screen.getByTestId("location").textContent).toBe(`${BASE}?tab=medidas`);
@@ -247,7 +247,7 @@ describe("AthleteTab · revisión", () => {
     const OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const { user, mock, router } = renderTab(`${BASE}?tab=medidas`, { [`GET /athletes/${OTHER}/metrics`]: (call) => pageReply(call, [metric(9, { measured_on: "2026-05-05" })]) }, { member: null });
     const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
-    await user.click(within(first).getByRole("button", { name: "Mostrar peso" }));
+    await user.click(within(first).getByRole("button", { name: /^Mostrar peso/ }));
     await within(first).findByText("61,2 kg");
 
     await act(async () => {
@@ -395,10 +395,66 @@ describe("AthleteTab · RMs y Récords (S9-F2)", () => {
 
 // Revisión S9-F2 (seguridad L3): sin la ficha cargada (member null) la pestaña no ofrece acciones de escritura.
 describe("AthleteTab · ficha sin cargar (revisión)", () => {
+  it("V7 M11: con member null el 403 de «Mostrar» no dice que el socio está dado de baja", async () => {
+    const { user } = renderTab(`${BASE}?tab=medidas`, { [`POST ${revealPath(metricId(1))}`]: apiError(403, "forbidden") }, { member: null });
+    const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
+
+    await user.click(within(first).getByRole("button", { name: /^Mostrar peso/ }));
+
+    const alert = await within(first).findByRole("alert");
+    expect(alert).toHaveTextContent("No pudimos cargar la ficha del socio");
+    expect(alert).not.toHaveTextContent("dado de baja");
+  });
+
   it("con member null no hay «+ Registrar récord» ni «+ Registrar medidas»", async () => {
     renderTab(`${BASE}?tab=records`, {}, { member: null });
 
     await screen.findByRole("tablist", { name: "Secciones del atleta" });
     expect(screen.queryByRole("button", { name: /Registrar/ })).not.toBeInTheDocument();
+  });
+});
+
+// V7 (revisión de Fase 4, M9): una región de avisos fija (role=status) que también cubre anular y invalidar.
+describe("AthleteTab · avisos de anular e invalidar (V7)", () => {
+  const notices = () => screen.getByRole("status", { name: "Avisos del atleta" });
+  const INVALIDATE = `POST ${invalidatePath(record(1).id)}`;
+  const withActions = (): Record<string, MockHandler> => ({
+    ...CATALOG_HANDLERS,
+    [`POST ${voidPath(metricId(1))}`]: { status: 200, body: metric(1, { voided_at: "2026-10-02T10:00:00Z" }) },
+    [INVALIDATE]: { status: 200, body: record(1, { is_current: false, invalidated_at: "2026-10-21T15:00:00Z", invalidated_reason: "manual_error" }) },
+    [`GET ${RECORDS_PATH}`]: (call) => pageReply(call, [record(1)]),
+  });
+
+  it("la región de avisos está montada desde el principio y vacía", async () => {
+    renderTab();
+
+    await screen.findByRole("tablist", { name: "Secciones del atleta" });
+    expect(notices()).toBeEmptyDOMElement();
+  });
+
+  it("anular una medición avisa «Medición anulada.» en la región de avisos", async () => {
+    const { user } = renderTab(`${BASE}?tab=medidas`, withActions());
+    await screen.findByText("1 oct 2026");
+    await user.click(screen.getByRole("button", { name: "Anular medición del 1 oct 2026" }));
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Anular medición" }));
+
+    await waitFor(() => {
+      expect(notices()).toHaveTextContent("Medición anulada.");
+    });
+  });
+
+  it("invalidar un récord avisa «Récord invalidado.» y cambiar de subpestaña limpia el aviso", async () => {
+    const { user } = renderTab(`${BASE}?tab=records`, withActions());
+    await screen.findByRole("table", { name: "Récords del socio" });
+    await user.click(await screen.findByRole("button", { name: /^Invalidar / }));
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Invalidar récord" }));
+
+    await waitFor(() => {
+      expect(notices()).toHaveTextContent("Récord invalidado.");
+    });
+    await user.click(screen.getByRole("tab", { name: "Resumen" }));
+    expect(notices()).toBeEmptyDOMElement();
   });
 });

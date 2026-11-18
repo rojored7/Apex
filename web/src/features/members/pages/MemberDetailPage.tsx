@@ -64,6 +64,13 @@ export const MEMBER_TABS: readonly TabItem[] = [
 ];
 const INDEX_TAB = "datos";
 
+/**
+ * V7 (M2): los parámetros de la URL que son de UNA pestaña hija (sus filtros y subpestañas): Pagos (`voided`), Resultados (`benchmark`)
+ * y Atleta (`tab`, `kind`, `invalidated`, `bm`). Al cambiar de pestaña de la ficha se borran: no se arrastran a otra hija que use
+ * el mismo nombre. Si una hija nueva lee un parámetro propio, se anota aquí. (`limit` se conserva: el tamaño de página es del usuario.)
+ */
+export const MEMBER_CHILD_PARAMS = ["voided", "benchmark", "tab", "kind", "invalidated", "bm"] as const;
+
 export const TAB_UNAVAILABLE = "No disponible";
 
 /** S3-F7: pestañas que son rutas hijas con su propio acceso (Membresías, Pagos; S4A-F2: Historial). */
@@ -207,7 +214,7 @@ function MemberDetail({ member, refreshError }: { member: MemberDetailView; refr
         actions={actions}
       />
       <DetailBanners member={member} refreshError={refreshError} notices={notices} />
-      <Tabs label="Secciones del socio" urlMode="segment" basePath={memberHref(member.id)} indexId={INDEX_TAB} tabs={memberTabs(member.id, role)}>
+      <Tabs label="Secciones del socio" urlMode="segment" basePath={memberHref(member.id)} indexId={INDEX_TAB} tabs={memberTabs(member.id, role)} ownParams={MEMBER_CHILD_PARAMS}>
         {() => <Outlet context={{ member } satisfies MemberOutletContext} />}
       </Tabs>
       <DeactivateMemberModal

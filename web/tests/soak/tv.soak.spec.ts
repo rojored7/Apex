@@ -88,6 +88,12 @@ async function runFor(page: Page, totalMs: number): Promise<void> {
 
 test("la TV aguanta 12 horas sin fuga de memoria", async ({ page }) => {
   test.skip(REAL_HOURS !== undefined, "modo SOAK_REAL_HOURS: corre la prueba en tiempo real");
+  // V7 L12: el modo acelerado también recoge los errores de consola y de página, como el modo real.
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
   let requests = 0;
   await page.route("**/api/v1/tv/today", async (route) => {
     requests += 1;
@@ -113,6 +119,7 @@ test("la TV aguanta 12 horas sin fuga de memoria", async ({ page }) => {
   const first = heaps[0] ?? 0;
   const last = heaps[QUARTERS - 1] ?? Number.POSITIVE_INFINITY;
   test.info().annotations.push({ type: "heap-por-cuarto-bytes", description: heaps.map((value) => String(Math.round(value))).join(" ") });
+  expect(errors).toEqual([]);
   expect(requests).toBeGreaterThan(1000);
   expect(last).toBeLessThanOrEqual(first * MAX_GROWTH);
 });

@@ -8,13 +8,14 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY } from "../../core/api/status";
 import { statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { COMMON_ERROR_MESSAGES, fieldErrorIn, type FieldErrorTarget } from "./commonErrors";
 import type { RecordFormValues } from "./schemas";
 
 export const RECORD_ERROR_MESSAGES = {
-  memberGone: "Este socio ya no existe. Vuelve a Socios y elige otro.",
-  tooManyReads: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  memberGone: COMMON_ERROR_MESSAGES.memberGone,
+  tooManyReads: COMMON_ERROR_MESSAGES.tooManyReads,
   rmsFailed: "No pudimos cargar los RMs. Intenta de nuevo en un momento.",
   rmsForbidden: "No tienes permiso para ver los RMs de este socio.",
   recordsFailed: "No pudimos cargar los récords. Intenta de nuevo en un momento.",
@@ -77,15 +78,10 @@ const FIELD_ERRORS: Readonly<Record<string, { path: FieldPath<RecordFormValues>;
   reps: { path: "reps", message: CHECK_MARK },
 };
 
-export interface RecordFieldError {
-  path: FieldPath<RecordFormValues>;
-  message: string;
-}
-
+export type RecordFieldError = FieldErrorTarget<RecordFormValues>;
 /** El 422 con `field` conocido va bajo su campo; cualquier otro error es general. */
 export function recordFieldError(error: unknown): RecordFieldError | null {
-  if (!isApiError(error) || error.status !== HTTP_UNPROCESSABLE || error.field === undefined) return null;
-  return FIELD_ERRORS[error.field] ?? null;
+  return fieldErrorIn(FIELD_ERRORS, error);
 }
 
 function saveText(error: ApiError): string {

@@ -174,14 +174,14 @@ export interface SocioCreado {
   nombre: string;
 }
 
-/** S3-F3: crea un socio activo por el api (POST /members), con documento aleatorio y autorización de datos. */
-export async function crearSocio(page: Page, admin: Credentials = datosDeBase()): Promise<SocioCreado> {
+/** S3-F3: crea un socio activo por el api (POST /members), con documento aleatorio y, por defecto, la autorización de datos (`conConsentimiento: false` crea uno sin ella, V7). */
+export async function crearSocio(page: Page, admin: Credentials = datosDeBase(), conConsentimiento = true): Promise<SocioCreado> {
   const headers = await accessDe(page, admin);
   const documento = documentoAleatorio();
   const apellido = `Venta${Date.now().toString(36)}`;
   const created = await page.request.post(`${API}/members`, {
     headers,
-    data: { first_name: "Sofía", last_name: apellido, document_type: "CC", document: documento, data_consent: true },
+    data: { first_name: "Sofía", last_name: apellido, document_type: "CC", document: documento, data_consent: conConsentimiento },
   });
   if (!created.ok()) throw new Error(`POST /members respondió ${String(created.status())}.`);
   const body = (await created.json()) as { id: string };
@@ -390,4 +390,62 @@ export async function restaurarTv(page: Page, headers: Record<string, string>, a
   await fijarTv(page, headers, { refresh_seconds: antes.refresh_seconds, show_leaderboard: antes.show_leaderboard });
   const respuesta = await page.request.post(`${API}/settings/tv/revoke-token`, { headers });
   if (!respuesta.ok()) throw new Error(`POST /settings/tv/revoke-token respondió ${String(respuesta.status())}.`);
+}
+
+// V7 L12: lo que repetían athlete-profile, athlete-records y kiosk-idle.
+export const MS_MINUTO = 60_000;
+const BOGOTA_OFFSET_MS = 5 * 60 * MS_MINUTO;
+/** Primer día de los WODs de las specs (2033): lejos de los datos reales; `diaLibreDeWod` busca desde aquí. */
+export const PRIMER_DIA_WOD = Date.UTC(2033, 0, 1);
+
+/** El día civil de Bogotá (UTC-5 fijo) de un instante, «AAAA-MM-DD». */
+export const diaBogota = (instante: Date): string => new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
+
+/** Ahora más `minutos`, redondeado al minuto hacia abajo (la clase queda a futuro y sigue «programada»). */
+export const ahoraMas = (minutos: number): Date => new Date(Math.floor((Date.now() + minutos * MS_MINUTO) / MS_MINUTO) * MS_MINUTO);
+
+/**
+ * Crea la clase de hoy en `inicio` o en el primer minuto libre de los cinco siguientes. Una clase con resultados no se puede
+ * cancelar (409 `locked_by_results`, por diseño), así que la de una corrida anterior sigue «programada» y repetir el minuto da
+ * 409 `session_duplicate`.
+ */
+export async function crearClaseDeHoy(page: Page, headers: Record<string, string>, inicio: Date, nombre: string): Promise<string> {
+  for (let intento = 0; intento < 5; intento += 1) {
+    const startsAt = new Date(inicio.getTime() + intento * MS_MINUTO).toISOString();
+    const respuesta = await page.request.post(`${API}/class-sessions`, { headers, data: { starts_at: startsAt, duration_min: 60, capacity: 10, name: nombre } });
+    if (respuesta.ok()) return ((await respuesta.json()) as { id: string }).id;
+    const codigo = ((await respuesta.json().catch(() => ({}))) as { error?: { code?: string } }).error?.code;
+    if (respuesta.status() !== 409 || codigo !== "session_duplicate") throw new Error(`POST /class-sessions respondió ${String(respuesta.status())}.`);
+  }
+  throw new Error("POST /class-sessions: los cinco minutos siguientes ya tienen una clase de esta spec.");
+}
+
+/**
+ * Cancela una clase que creó la spec (las sesiones no se borran). Con resultados no se puede (409 `locked_by_results`, por diseño,
+ * S9-D68): solo eso se tolera, leyendo el `error.code` de la respuesta; cualquier otra respuesta lanza.
+ */
+export async function cancelarClase(page: Page, sesionId: string, admin: Credentials = datosDeBase()): Promise<void> {
+  const headers = { ...(await accessDe(page, admin)), ...sameOriginHeaders() };
+  const respuesta = await page.request.post(`${API}/class-sessions/${encodeURIComponent(sesionId)}/cancel`, { headers, data: { reason: "limpieza E2E" } });
+  if (respuesta.ok()) return;
+  const codigo = ((await respuesta.json().catch(() => ({}))) as { error?: { code?: string } }).error?.code;
+  if (respuesta.status() === 409 && codigo === "locked_by_results") return;
+  throw new Error(`POST /class-sessions/{id}/cancel respondió ${String(respuesta.status())}${codigo === undefined ? "" : ` (${codigo})`}.`);
+}
+
+export interface MovimientoKg {
+  id: string;
+  name: string;
+}
+
+/** Un movimiento activo que se mide en kg: el primero que haya o, si no hay ninguno, uno nuevo con nombre ficticio único. */
+export async function asegurarMovimientoKg(page: Page, headers: Record<string, string>): Promise<MovimientoKg> {
+  const lista = await page.request.get(`${API}/movements?limit=200&offset=0&active=true`, { headers });
+  if (!lista.ok()) throw new Error(`GET /movements respondió ${String(lista.status())}.`);
+  const existente = ((await lista.json()) as { items: { id: string; name: string; unit: string }[] }).items.find((item) => item.unit === "kg");
+  if (existente !== undefined) return existente;
+  const nombre = `Mov kg E2E ${Date.now().toString(36)}`;
+  const creado = await page.request.post(`${API}/movements`, { headers, data: { name: nombre, category: "weightlifting", unit: "kg" } });
+  if (!creado.ok()) throw new Error(`POST /movements respondió ${String(creado.status())}.`);
+  return { id: ((await creado.json()) as { id: string }).id, name: nombre };
 }

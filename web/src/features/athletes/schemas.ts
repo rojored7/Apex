@@ -9,11 +9,13 @@
 import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { todayBogota } from "../../core/i18n/format";
-import { kgInputToGrams, parseClock, SCORE_KINDS } from "../../shared/data/score";
+import { BENCHMARK_SCORE_TYPES } from "../../shared/data/catalog";
+import { RESULT_LEVELS, type ResultLevel } from "../../shared/data/results";
+import { isCountUpTo, kgInputToGrams, MAX_REPS, MAX_ROUNDS, parseClock, SCORE_KINDS } from "../../shared/data/score";
 
 export type MetricView = components["schemas"]["MetricOut"];
-export type AthleteSummaryView = components["schemas"]["AthleteSummaryOut"];
-export type SummaryRecordView = components["schemas"]["SummaryRecordOut"];
+export type AthleteSummaryView = z.infer<typeof athleteSummarySchema>;
+export type SummaryRecordView = z.infer<typeof summaryRecordSchema>;
 export type MetricCreate = components["schemas"]["MetricIn"];
 export type MetricFieldName = components["schemas"]["MetricRevealIn"]["field"];
 
@@ -39,7 +41,7 @@ export const summaryRecordSchema = z.object({
   movement_name: z.string().nullable(),
   benchmark_id: z.string().nullable(),
   benchmark_name: z.string().nullable(),
-  score_type: z.string().nullable(),
+  score_type: z.enum(SCORE_KINDS).nullable(),
   value_g: z.number().int().nullable(),
   level: z.enum(["rx", "rx_plus", "scaled"]).nullable(),
   seconds: z.number().int().nullable(),
@@ -152,8 +154,7 @@ export function parseMetricForm(values: MetricFormValues): MetricCreate {
   };
 }
 
-export const RECORD_LEVELS = ["rx", "rx_plus", "scaled"] as const;
-export type RecordLevel = (typeof RECORD_LEVELS)[number];
+export type RecordLevel = ResultLevel;
 export const RECORD_KINDS = ["rm", "benchmark"] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
@@ -179,7 +180,7 @@ export const recordSchema = z.object({
   benchmark_name: z.string().nullable(),
   score_type: z.enum(SCORE_KINDS).nullable(),
   value_g: z.number().int().nullable(),
-  level: z.enum(RECORD_LEVELS).nullable(),
+  level: z.enum(RESULT_LEVELS).nullable(),
   seconds: z.number().int().nullable(),
   rounds: z.number().int().nullable(),
   reps: z.number().int().nullable(),
@@ -235,33 +236,26 @@ export const EMPTY_RECORD_FORM = (): RecordFormValues => ({
   achieved_on: todayBogota(),
 });
 
-const MAX_ROUNDS = 1000;
-const MAX_REPS = 100_000;
-const COUNT_PATTERN = /^[0-9]{1,6}$/;
-
-const inRange = (text: string, max: number): boolean => COUNT_PATTERN.test(text.trim()) && Number(text.trim()) <= max;
-
 /** Carga en kg a gramos enteros: 0,01 a 1.000 kg; `null` si no es una carga válida (cero tampoco). */
 export function recordLoadToGrams(input: string): number | null {
   const grams = kgInputToGrams(input);
   return grams !== null && grams > 0 ? grams : null;
 }
 
-const BENCHMARK_MARKS = ["time", "rounds_reps", "reps", "load"] as const;
-type BenchmarkMark = (typeof BENCHMARK_MARKS)[number];
+type BenchmarkMark = (typeof BENCHMARK_SCORE_TYPES)[number];
 
 /** El tipo de marca de un benchmark; `null` si el formulario trae uno que no se puede registrar a mano (vacío, `none` u otro). */
 function benchmarkMark(text: string): BenchmarkMark | null {
-  return BENCHMARK_MARKS.find((mark) => mark === text) ?? null;
+  return BENCHMARK_SCORE_TYPES.find((mark) => mark === text) ?? null;
 }
 
 function checkBenchmarkMark(values: RecordFormValues, scoreType: BenchmarkMark, fail: (path: keyof RecordFormValues, message: string) => void): void {
   if (scoreType === "time" && parseClock(values.time) === null) fail("time", RECORD_MESSAGES.time);
   if (scoreType === "rounds_reps") {
-    if (!inRange(values.rounds, MAX_ROUNDS)) fail("rounds", RECORD_MESSAGES.rounds);
-    if (!inRange(values.reps, MAX_REPS)) fail("reps", RECORD_MESSAGES.reps);
+    if (!isCountUpTo(values.rounds, MAX_ROUNDS)) fail("rounds", RECORD_MESSAGES.rounds);
+    if (!isCountUpTo(values.reps, MAX_REPS)) fail("reps", RECORD_MESSAGES.reps);
   }
-  if (scoreType === "reps" && !inRange(values.reps, MAX_REPS)) fail("reps", RECORD_MESSAGES.reps);
+  if (scoreType === "reps" && !isCountUpTo(values.reps, MAX_REPS)) fail("reps", RECORD_MESSAGES.reps);
   if (scoreType === "load" && recordLoadToGrams(values.load) === null) fail("load", RECORD_MESSAGES.load);
 }
 
@@ -271,7 +265,7 @@ export const recordFormSchema = z
     movement_id: z.string(),
     benchmark_id: z.string(),
     score_type: z.string(),
-    level: z.enum(RECORD_LEVELS),
+    level: z.enum(RESULT_LEVELS),
     load: z.string(),
     time: z.string(),
     rounds: z.string(),
@@ -322,7 +316,7 @@ export function parseRecordForm(values: RecordFormValues): RecordCreate {
 
 // S9-F3 (US-183): la lista de benchmarks con intentos y la serie de uno (BenchmarkRowOut, BenchmarkSeriesOut y AttemptOut), validadas con Zod.
 const scoreSchema = z.object({
-  level: z.enum(RECORD_LEVELS),
+  level: z.enum(RESULT_LEVELS),
   seconds: z.number().int().nonnegative().nullable(),
   rounds: z.number().int().nonnegative().nullable(),
   reps: z.number().int().nonnegative().nullable(),
@@ -336,7 +330,7 @@ export const SERIES_MAX_ATTEMPTS = 200;
 export const benchmarkRowSchema = z.object({
   benchmark_id: z.string().min(1),
   name: z.string(),
-  score_type: z.string(),
+  score_type: z.enum(SCORE_KINDS),
   attempts: z.number().int().nonnegative(),
   last_on: z.string().min(1),
   best: scoreSchema,
@@ -354,7 +348,7 @@ export const attemptSchema = scoreSchema.extend({
 export const benchmarkSeriesSchema = z.object({
   benchmark_id: z.string().min(1),
   name: z.string(),
-  score_type: z.string(),
+  score_type: z.enum(SCORE_KINDS),
   attempts: z.array(attemptSchema).max(SERIES_MAX_ATTEMPTS),
   truncated: z.boolean(),
 });

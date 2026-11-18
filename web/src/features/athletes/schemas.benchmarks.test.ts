@@ -1,6 +1,6 @@
 // Revisión S9-F3 (seguridad S1 y S3): el contrato de la serie de benchmarks se valida antes de usarse.
-import { attempt, benchmarkRow, seriesOf } from "../../test/athletes";
-import { benchmarkSeriesSchema } from "./schemas";
+import { attempt, benchmarkRow, seriesOf, summary, summaryRecord } from "../../test/athletes";
+import { athleteSummarySchema, benchmarkRowSchema, benchmarkSeriesSchema } from "./schemas";
 
 const ROW = benchmarkRow();
 
@@ -27,5 +27,22 @@ describe("benchmarkSeriesSchema", () => {
     const series = seriesOf(ROW, [attempt(1, { seconds: 0, rounds: null, reps: 0, load_g: null })]);
 
     expect(benchmarkSeriesSchema.safeParse(series).success).toBe(true);
+  });
+});
+
+// V7 M11: `score_type` se valida igual en el resumen, la lista de benchmarks, la serie y los récords: un valor que la pantalla no
+// conoce es una respuesta inválida (no un «—» silencioso).
+describe("score_type (V7 M11)", () => {
+  it("la serie y la fila de la lista rechazan un tipo de marca desconocido", () => {
+    expect(benchmarkSeriesSchema.safeParse({ ...seriesOf(ROW, [attempt(1, { seconds: 300 })]), score_type: "banana" }).success).toBe(false);
+    expect(benchmarkRowSchema.safeParse({ ...ROW, score_type: "banana" }).success).toBe(false);
+  });
+
+  it("el resumen rechaza un récord con tipo de marca desconocido y acepta los cinco conocidos", () => {
+    const base = summary();
+    const withType = (score_type: string) => athleteSummarySchema.safeParse({ ...base, recent_records: [{ ...summaryRecord(), score_type }] }).success;
+
+    expect(withType("banana")).toBe(false);
+    for (const known of ["time", "rounds_reps", "reps", "load", "none"]) expect(withType(known)).toBe(true);
   });
 });

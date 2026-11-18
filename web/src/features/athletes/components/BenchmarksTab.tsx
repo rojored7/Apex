@@ -1,7 +1,7 @@
 // S9-F3 · US-183 (Atleta_Perfil.html, subpestaña «Benchmarks»): la serie de un benchmark del socio.
 // - GET /athletes/{id}/benchmarks (los chips; se piden páginas de 200 hasta 1.000 y se avisa si no caben) y
 //   GET /athletes/{id}/benchmarks/{benchmark_id} (la serie: hasta 200 intentos por fecha ascendente, sin paginar).
-// - Chips en el grupo «Benchmark» con `?benchmark=<id>`; sin parámetro (o con uno que no está en la lista) vale el primero.
+// - Chips en el grupo «Benchmark» con `?bm=<id>`; sin parámetro (o con uno que no está en la lista) vale el primero.
 // - Tabla «Intentos del socio en <nombre>»: Fecha, Marca, Nivel y Diferencia, del intento más reciente al más antiguo (como el diseño);
 //   la gráfica va en orden cronológico. La diferencia se calcula contra el intento ANTERIOR EN EL TIEMPO, sea cual sea el orden de pintado.
 // - «Mejor» con texto; «Primera vez»; «Cambió de nivel» (sin número) si el nivel cambió; «—» si no se puede comparar (rondas + repeticiones, DNF).
@@ -12,7 +12,7 @@ import { useSearchParams } from "react-router";
 import type { ApiError } from "../../../core/api/errors";
 import { formatCount, formatDate } from "../../../core/i18n/format";
 import { LEVEL_LABELS } from "../../../shared/data/results";
-import { formatScore, formatScoreDelta, isScoreKind, type ScoreKind, type ScoreValues } from "../../../shared/data/score";
+import { formatScore, formatScoreDelta, type ScoreKind, type ScoreValues } from "../../../shared/data/score";
 import { Button } from "../../../shared/ui/Button";
 import { Chips } from "../../../shared/ui/Chips";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
@@ -20,7 +20,7 @@ import { StatusTag } from "../../../shared/ui/StatusTag";
 import { TrendChart, type TrendPoint } from "../../../shared/ui/TrendChart";
 import { BENCHMARKS_MAX_PAGES, BENCHMARKS_PAGE_LIMIT, useAthleteBenchmarks, useBenchmarkSeries } from "../api";
 import { benchmarkSeriesError, benchmarksListError } from "../recordErrors";
-import type { AttemptView, BenchmarkRowView, BenchmarkSeriesView } from "../schemas";
+import { SERIES_MAX_ATTEMPTS, type AttemptView, type BenchmarkRowView, type BenchmarkSeriesView } from "../schemas";
 import styles from "./BenchmarksTab.module.css";
 
 export interface BenchmarksTabProps {
@@ -30,7 +30,7 @@ export interface BenchmarksTabProps {
 export const BENCHMARKS_EMPTY = "Sin intentos en benchmarks";
 const BENCHMARKS_EMPTY_HELP = "Aquí aparecen los benchmarks que el socio haga en una clase con resultado validado.";
 const SAME_LEVEL_NOTE = "Solo se compara entre intentos del mismo nivel.";
-const TRUNCATED_SERIES = `Se muestran los ${String(BENCHMARKS_PAGE_LIMIT)} intentos más recientes.`;
+const TRUNCATED_SERIES = `Se muestran los ${String(SERIES_MAX_ATTEMPTS)} intentos más recientes.`;
 const TRUNCATED_LIST = `Se muestran los primeros ${formatCount(BENCHMARKS_PAGE_LIMIT * BENCHMARKS_MAX_PAGES)} benchmarks.`;
 const FIRST_TIME = "Primera vez";
 const LEVEL_CHANGED = "Cambió de nivel";
@@ -38,7 +38,8 @@ const NO_DELTA = "—";
 const ROUNDS_FACTOR = 1000;
 /** Las repeticiones de una ronda parcial caben en 0 a 999: así «rondas × 1000 + reps» ordena como la marca. */
 const MAX_PLOT_REPS = ROUNDS_FACTOR - 1;
-const PARAM = "benchmark";
+/** El benchmark elegido; no se llama `benchmark` porque la pestaña Resultados usa `?benchmark=true` (V7, M2). */
+const PARAM = "bm";
 
 interface AttemptRow {
   attempt: AttemptView;
@@ -143,20 +144,32 @@ function Series({ memberId, benchmark }: { memberId: string; benchmark: Benchmar
   const series = useBenchmarkSeries(memberId, benchmark.benchmark_id);
   const error = benchmarkSeriesError(series.error);
   const data = series.data;
-  if (error) {
+  const notice = error ? (
+    <ErrorNotice
+      error={error}
+      onRetry={() => {
+        void series.refetch();
+      }}
+    />
+  ) : null;
+  // Sin datos el error es toda la serie; con datos (falló una relectura de fondo) va junto a ellos y no los tapa (V7, M10).
+  if (data === undefined) {
+    return notice ?? <DataTable caption={`Cargando los intentos del socio en ${benchmark.name}`} columns={COLUMNS} rows={undefined} isLoading rowKey={(row) => row.attempt.result_id} />;
+  }
+  if (data.attempts.length === 0) {
     return (
-      <ErrorNotice
-        error={error}
-        onRetry={() => {
-          void series.refetch();
-        }}
-      />
+      <>
+        {notice}
+        <p className={styles.emptyHelp}>{`Este socio todavía no tiene intentos validados en ${benchmark.name}.`}</p>
+      </>
     );
   }
-  if (data === undefined) return <DataTable caption={`Cargando los intentos del socio en ${benchmark.name}`} columns={COLUMNS} rows={undefined} isLoading rowKey={(row) => row.attempt.result_id} />;
-  if (data.attempts.length === 0) return <p className={styles.emptyHelp}>{`Este socio todavía no tiene intentos validados en ${benchmark.name}.`}</p>;
-  const scoreType = data.score_type;
-  return <SeriesBody benchmark={benchmark} series={data} kind={isScoreKind(scoreType) ? scoreType : "none"} />;
+  return (
+    <>
+      {notice}
+      <SeriesBody benchmark={benchmark} series={data} kind={data.score_type} />
+    </>
+  );
 }
 
 function ListState({ isLoading, error, onRetry }: { isLoading: boolean; error: ApiError | null; onRetry: () => void }) {

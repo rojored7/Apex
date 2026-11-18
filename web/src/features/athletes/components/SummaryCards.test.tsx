@@ -103,17 +103,16 @@ describe("SummaryCards · récords recientes", () => {
     expect(within(rows[2] as HTMLElement).getByText("110 kg")).toBeInTheDocument();
   });
 
-  it("el origen se dice con palabras: «automático del WOD» o «manual», y un derivado enlaza a su WOD", async () => {
+  it("el origen se dice con palabras (el mismo texto que Récords y RMs) y un derivado enlaza a su WOD con un nombre accesible", async () => {
     renderCards();
 
     await screen.findByRole("heading", { level: 2, name: "Récords recientes" });
     const rows = within(card("Récords recientes")).getAllByRole("row").slice(1);
-    expect(within(rows[0] as HTMLElement).getByText("automático")).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).getByText(/del WOD/)).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).getByRole("link", { name: "ver" })).toHaveAttribute("href", "/wods/f2f2f2f2-0000-4000-8000-0000000000aa");
-    expect(within(rows[1] as HTMLElement).getByRole("link", { name: "ver" })).toHaveAttribute("href", "/wods/f2f2f2f2-0000-4000-8000-0000000000bb");
-    expect(within(rows[2] as HTMLElement).getByText("manual")).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).queryByRole("link", { name: "ver" })).not.toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText("Automático del WOD")).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByRole("link", { name: "Ver el WOD de Helen (benchmark)" })).toHaveAttribute("href", "/wods/f2f2f2f2-0000-4000-8000-0000000000aa");
+    expect(within(rows[1] as HTMLElement).getByRole("link", { name: "Ver el WOD de Back Squat 1RM" })).toHaveAttribute("href", "/wods/f2f2f2f2-0000-4000-8000-0000000000bb");
+    expect(within(rows[2] as HTMLElement).getByText("Manual")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("«Ver todos» de los récords lleva a la subpestaña Récords", async () => {
@@ -193,6 +192,23 @@ describe("SummaryCards · estados de la carga", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cargar el resumen. Intenta de nuevo en un momento.");
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByRole("heading", { level: 2, name: "Medidas corporales" })).toBeInTheDocument();
+  });
+
+  it("V7 M10: si falla una relectura con el resumen ya cargado, el error aparece junto a las tarjetas y no las tapa", async () => {
+    let calls = 0;
+    const { queryClient } = renderCards({
+      [GET]: () => {
+        calls += 1;
+        return calls === 1 ? { status: 200, body: summary() } : apiError(500, "internal_error");
+      },
+    });
+    await screen.findByRole("heading", { level: 2, name: "Récords recientes" });
+
+    await queryClient.invalidateQueries({ queryKey: ["athlete-summary"] });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos cargar el resumen. Intenta de nuevo en un momento.");
+    expect(screen.getByRole("heading", { level: 2, name: "Récords recientes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Medidas corporales" })).toBeInTheDocument();
   });
 
   it("un 403 explica que no tiene permiso y un 404 que el socio ya no existe", async () => {

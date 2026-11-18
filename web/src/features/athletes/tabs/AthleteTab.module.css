@@ -24,3 +24,8 @@
   color: var(--ink);
   font: var(--text-body);
 }
+
+/* La región de avisos (role=status) vive siempre en el DOM para que el lector de pantalla anuncie el cambio; vacía no ocupa espacio. */
+.noticeSlot {
+  margin: 0;
+}

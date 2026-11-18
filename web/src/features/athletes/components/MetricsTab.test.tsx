@@ -6,7 +6,7 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
 import { apiError, MEMBER_ID, METRICS_PATH, metric, metricId, pageReply, renderAthlete, revealPath, revealReply, voidPath } from "../../../test/athletes";
-import { setViewportWidth, type MockHandler } from "../../../test/server";
+import { setViewportWidth, testQueryClient, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
 import { MetricsTab } from "./MetricsTab";
 
@@ -57,13 +57,13 @@ describe("MetricsTab · contenido", () => {
     renderTab();
 
     const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
-    expect(within(first).getByRole("button", { name: "Mostrar peso" })).toBeInTheDocument();
-    expect(within(first).getByRole("button", { name: "Mostrar altura" })).toBeInTheDocument();
-    expect(within(first).getByRole("button", { name: "Mostrar % grasa" })).toBeInTheDocument();
-    expect(within(first).queryByRole("button", { name: "Mostrar notas" })).not.toBeInTheDocument();
+    expect(within(first).getByRole("button", { name: /^Mostrar peso/ })).toBeInTheDocument();
+    expect(within(first).getByRole("button", { name: /^Mostrar altura/ })).toBeInTheDocument();
+    expect(within(first).getByRole("button", { name: /^Mostrar % grasa/ })).toBeInTheDocument();
+    expect(within(first).queryByRole("button", { name: /^Mostrar notas/ })).not.toBeInTheDocument();
     const third = screen.getByText("1 ago 2026").closest("tr") as HTMLElement;
-    expect(within(third).getByRole("button", { name: "Mostrar notas" })).toBeInTheDocument();
-    expect(within(third).queryByRole("button", { name: "Mostrar altura" })).not.toBeInTheDocument();
+    expect(within(third).getByRole("button", { name: /^Mostrar notas/ })).toBeInTheDocument();
+    expect(within(third).queryByRole("button", { name: /^Mostrar altura/ })).not.toBeInTheDocument();
     expect(within(third).getAllByText("—").length).toBeGreaterThanOrEqual(3);
     expect(table().textContent).not.toMatch(/61,2|165 cm|22 %/);
   });
@@ -72,7 +72,7 @@ describe("MetricsTab · contenido", () => {
     const { mock, user } = renderTab({ [`POST ${revealPath(metricId(2))}`]: revealReply });
     const second = (await screen.findByText("1 sept 2026")).closest("tr") as HTMLElement;
 
-    await user.click(within(second).getByRole("button", { name: "Mostrar peso" }));
+    await user.click(within(second).getByRole("button", { name: /^Mostrar peso/ }));
 
     expect(await within(second).findByText("61,2 kg")).toBeInTheDocument();
     expect(mock.callsTo(`POST ${revealPath(metricId(2))}`)[0]?.body).toEqual({ field: "weight_g" });
@@ -207,6 +207,71 @@ describe("MetricsTab · Anular (US-178, S9-D33)", () => {
   });
 });
 
+describe("MetricsTab · nombre accesible de «Mostrar» (V7 M11)", () => {
+  it("cada «Mostrar» dice de qué medición es, con la fecha y sin ningún valor", async () => {
+    renderTab();
+
+    const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
+    expect(within(first).getByRole("button", { name: "Mostrar peso del 1 oct 2026" })).toBeInTheDocument();
+    const second = screen.getByText("1 sept 2026").closest("tr") as HTMLElement;
+    expect(within(second).getByRole("button", { name: "Mostrar peso del 1 sept 2026" })).toBeInTheDocument();
+    expect(within(second).getByRole("button", { name: "Mostrar % grasa del 1 sept 2026" })).toBeInTheDocument();
+  });
+});
+
+describe("MetricsTab · anular relee solo lo de este socio (V7 M11)", () => {
+  it("relee el resumen y las medidas del socio, pero no sus RMs, récords y benchmarks ni lo de otro socio", async () => {
+    const queryClient = testQueryClient();
+    const seed = (name: string, id: string): void => {
+      queryClient.setQueryData([name, id], { ok: true });
+    };
+    for (const name of ["athlete-summary", "athlete-rms", "athlete-records", "athlete-benchmarks"]) seed(name, MEMBER_ID);
+    seed("athlete-summary", "otro-socio");
+    seed("athlete-metrics", "otro-socio");
+    const { user } = renderAthlete(<MetricsTab memberId={MEMBER_ID} memberDeleted={false} />, {
+      handlers: { [LIST]: rows(ROWS), [`POST ${voidPath(metricId(1))}`]: { status: 200, body: metric(1, { voided_at: "2026-10-02T10:00:00Z" }) } },
+      queryClient,
+    });
+    await screen.findByText("1 oct 2026");
+    await user.click(screen.getByRole("button", { name: "Anular medición del 1 oct 2026" }));
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Anular medición" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    const stale = (key: readonly unknown[]): boolean | undefined => queryClient.getQueryCache().find({ queryKey: key, exact: false })?.state.isInvalidated;
+    expect(stale(["athlete-summary", MEMBER_ID])).toBe(true);
+    for (const name of ["athlete-rms", "athlete-records", "athlete-benchmarks"]) expect(stale([name, MEMBER_ID]), name).toBe(false);
+    expect(stale(["athlete-summary", "otro-socio"])).toBe(false);
+    expect(stale(["athlete-metrics", "otro-socio"])).toBe(false);
+  });
+});
+
+describe("MetricsTab · foco tras anular (V7 M1)", () => {
+  it("tras anular con éxito el foco pasa al encabezado «Medidas corporales» (la fila y su botón ya no existen)", async () => {
+    let reads = 0;
+    const { user } = renderTab({
+      [`POST ${voidPath(metricId(1))}`]: { status: 200, body: metric(1, { voided_at: "2026-10-02T10:00:00Z" }) },
+      [LIST]: (call) => {
+        reads += 1;
+        return pageReply(call, reads === 1 ? ROWS : ROWS.slice(1));
+      },
+    });
+    await screen.findByText("1 oct 2026");
+    await user.click(screen.getByRole("button", { name: "Anular medición del 1 oct 2026" }));
+
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Anular medición" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 2, name: "Medidas corporales" })).toHaveFocus();
+    });
+  });
+});
+
 describe("MetricsTab · socio dado de baja (S9-D34)", () => {
   it("no ofrece «Anular» en ninguna fila", async () => {
     renderTab({}, true);
@@ -220,7 +285,7 @@ describe("MetricsTab · socio dado de baja (S9-D34)", () => {
     const { user } = renderTab({ [`POST ${revealPath(metricId(1))}`]: apiError(403, "forbidden") }, true);
     const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
 
-    await user.click(within(first).getByRole("button", { name: "Mostrar peso" }));
+    await user.click(within(first).getByRole("button", { name: /^Mostrar peso/ }));
 
     expect(await within(first).findByRole("alert")).toHaveTextContent("Este socio está dado de baja: solo un administrador puede mostrar sus medidas.");
     expect(first).not.toHaveTextContent("61,2");
@@ -230,7 +295,7 @@ describe("MetricsTab · socio dado de baja (S9-D34)", () => {
     const { user } = renderTab({ [`POST ${revealPath(metricId(1))}`]: revealReply }, true);
     const first = (await screen.findByText("1 oct 2026")).closest("tr") as HTMLElement;
 
-    await user.click(within(first).getByRole("button", { name: "Mostrar peso" }));
+    await user.click(within(first).getByRole("button", { name: /^Mostrar peso/ }));
 
     expect(await within(first).findByText("61,2 kg")).toBeInTheDocument();
   });

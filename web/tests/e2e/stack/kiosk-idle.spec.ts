@@ -6,21 +6,14 @@
 // access de 15 min sigue vigente por JWT; lo que prueba "el api ya no acepta la sesión" es el refresh revocado (401).
 // Necesita la cuenta del admin del seed (E2E_ADMIN_EMAIL y E2E_ADMIN_PASSWORD) y crea su coach y su clase de hoy. Sin E2E_BASE_URL se omite.
 import { expect, test, type Page } from "@playwright/test";
-// Espejo de `TABLET_IDLE_MS` (GymLayout.tsx): la spec no importa .tsx con CSS modules.
-const TABLET_IDLE_MS = 10 * 60 * 1000;
-import { borrarUsuario, crearCoach, loginComo, sameOriginHeaders, type CoachCreado } from "../helpers/stack";
+import { TABLET_IDLE_MS } from "../../../src/layouts/idle";
+import { ahoraMas, borrarUsuario, cancelarClase, crearCoach, diaBogota, loginComo, MS_MINUTO, sameOriginHeaders, type CoachCreado } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
 const API = "/api/v1";
 const CHECKIN = /\/clases\/[^/]+\/checkin$/;
-const MS_MINUTO = 60_000;
-const BOGOTA_OFFSET_MS = 5 * 60 * MS_MINUTO;
 const UN_SEGUNDO = 1_000;
 const ESPERA_MS = 15_000;
-
-/** Ahora más `minutos`, redondeado al minuto (la clase queda a futuro y sigue «programada»). */
-const ahoraMas = (minutos: number): Date => new Date(Math.floor((Date.now() + minutos * MS_MINUTO) / MS_MINUTO) * MS_MINUTO);
-const diaBogota = (instante: Date): string => new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
 
 interface Preparado {
   coach: CoachCreado;
@@ -50,12 +43,6 @@ async function entrarAlQuiosco(page: Page, p: Preparado): Promise<void> {
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Check-in");
   // Modo tablet: ningún enlace al panel.
   await expect(page.getByRole("link")).toHaveCount(0);
-}
-
-/** Cancela la clase del caso (las sesiones no se borran). El coach se borra aparte, en el `finally` de cada caso. */
-async function cancelarClase(page: Page, sesionId: string): Promise<void> {
-  const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
-  await page.request.post(`${API}/class-sessions/${sesionId}/cancel`, { headers, data: { reason: "limpieza E2E" } });
 }
 
 test.describe("cierre del modo tablet por inactividad contra el stack", () => {
@@ -95,8 +82,12 @@ test.describe("cierre del modo tablet por inactividad contra el stack", () => {
       const marca = await page.request.post(`${API}/auth/kiosk`, { headers, data: { path: `/clases/${p.sesionId}/checkin` } });
       expect(marca.status()).toBe(401);
     } finally {
-      await borrarUsuario(page, p.coach.id);
-      await cancelarClase(page, p.sesionId);
+      // Un fallo del borrado del coach no se salta la cancelación de la clase, y un fallo de la cancelación (no un 409 por resultados) también falla.
+      try {
+        await borrarUsuario(page, p.coach.id);
+      } finally {
+        await cancelarClase(page, p.sesionId);
+      }
     }
   });
 
@@ -132,8 +123,12 @@ test.describe("cierre del modo tablet por inactividad contra el stack", () => {
       expect((await logout).status()).toBe(204);
       await expect(page).toHaveURL(/\/login/);
     } finally {
-      await borrarUsuario(page, p.coach.id);
-      await cancelarClase(page, p.sesionId);
+      // Un fallo del borrado del coach no se salta la cancelación de la clase, y un fallo de la cancelación (no un 409 por resultados) también falla.
+      try {
+        await borrarUsuario(page, p.coach.id);
+      } finally {
+        await cancelarClase(page, p.sesionId);
+      }
     }
   });
 });

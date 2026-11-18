@@ -3,6 +3,15 @@
 // Lo comparten WODs, resultados, ficha y TV (una feature nunca importa de otra).
 
 export const LOAD_MAX_G = 1_000_000;
+/** Topes de rondas y repeticiones de una marca (los del api) y su validación: un entero de hasta seis dígitos. */
+export const MAX_ROUNDS = 1000;
+export const MAX_REPS = 100_000;
+const COUNT_PATTERN = /^[0-9]{1,6}$/;
+
+/** ¿El texto es un conteo entero (rondas o repeticiones) de 0 a `max`? */
+export function isCountUpTo(text: string, max: number): boolean {
+  return COUNT_PATTERN.test(text.trim()) && Number(text.trim()) <= max;
+}
 const GRAMS_PER_KG = 1000;
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;

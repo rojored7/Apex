@@ -8,6 +8,7 @@
 // - 403 de un coach con el socio dado de baja: lo explica (solo un administrador, S9-D34).
 import { useEffect, useRef, useState } from "react";
 import { useCan } from "../../../core/auth/useCan";
+import { formatDate } from "../../../core/i18n/format";
 import { formatWeightKg } from "../../../shared/data/score";
 import { useTimedReveal } from "../../../shared/hooks/useTimedReveal";
 import { Button } from "../../../shared/ui/Button";
@@ -25,6 +26,10 @@ export interface MetricFieldProps {
   has: boolean;
   /** El socio está dado de baja: su `reveal` solo lo hace un administrador (S9-D34). */
   memberDeleted?: boolean;
+  /** La fecha de la medición (`YYYY-MM-DD`): el nombre del botón dice de cuál es, sin ningún valor. */
+  measuredOn?: string;
+  /** Solo falta la ficha (no se sabe si el socio está de baja): el 403 del reveal no dice «dado de baja» (V7, M11). */
+  memberUnknown?: boolean;
 }
 
 const MASK = "•••";
@@ -42,7 +47,7 @@ function displayText(field: MetricFieldName, value: number | string | null): str
   return field === "height_cm" ? `${String(value)} cm` : `${String(value)} %`;
 }
 
-export function MetricField({ memberId, metricId, field, has, memberDeleted = false }: MetricFieldProps) {
+export function MetricField({ memberId, metricId, field, has, memberDeleted = false, measuredOn, memberUnknown = false }: MetricFieldProps) {
   const canReveal = useCan("athletes.reveal");
   const { mutateAsync } = useRevealMetric(memberId);
   const [state, setState] = useState<RevealState>({ status: "masked" });
@@ -79,7 +84,7 @@ export function MetricField({ memberId, metricId, field, has, memberDeleted = fa
       setState({ status: "revealed", text: displayText(field, value) });
       arm();
     } catch (error) {
-      if (mounted.current) setState({ status: "error", message: revealMetricError(error, memberDeleted) });
+      if (mounted.current) setState({ status: "error", message: revealMetricError(error, memberDeleted, memberUnknown) });
     } finally {
       busy.current = false;
     }
@@ -102,7 +107,7 @@ export function MetricField({ memberId, metricId, field, has, memberDeleted = fa
           variant="ghost"
           className={styles.toggle}
           loading={state.status === "loading"}
-          aria-label={`${revealed ? "Ocultar" : "Mostrar"} ${name}`}
+          aria-label={`${revealed ? "Ocultar" : "Mostrar"} ${name}${measuredOn === undefined ? "" : ` del ${formatDate(measuredOn)}`}`}
           onClick={() => {
             if (revealed) hide();
             else void show();

@@ -130,6 +130,31 @@ describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
     expect(mock.callsTo(`GET ${DETAIL_PATH}`)).toHaveLength(1);
   });
 
+  // V7 (revisión de Fase 4, M2): los parámetros propios de cada hija no se arrastran a otra pestaña de la ficha.
+  it("V7 M2: de Resultados («Solo benchmarks») a Atleta no pasa ?benchmark=true (ni se confunde con el benchmark elegido de Atleta)", async () => {
+    const { user } = renderMemberDetail(`/socios/${MEMBER_ID}/resultados?benchmark=true&limit=50`);
+
+    await user.click(await screen.findByRole("tab", { name: "Atleta" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/atleta?limit=50`);
+  });
+
+  it("V7 M2: de Atleta (Benchmarks, filtros de Récords) a otra pestaña de la ficha se van tab, bm, kind e invalidated", async () => {
+    const { user } = renderMemberDetail(`/socios/${MEMBER_ID}/atleta?tab=benchmarks&bm=e0e0e0e0-0000-4000-8000-000000000001&kind=rm&invalidated=1&offset=25`);
+
+    await user.click(await screen.findByRole("tab", { name: "Resultados" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/resultados`);
+  });
+
+  it("V7 M2: de Pagos (voided=false) a Atleta se va el filtro de Pagos", async () => {
+    const { user } = renderMemberDetail(`/socios/${MEMBER_ID}/pagos?voided=false`);
+
+    await user.click(await screen.findByRole("tab", { name: "Atleta" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/atleta`);
+  });
+
   it("S9-F1: el coach también ve la pestaña Atleta habilitada (athletes.view)", async () => {
     signInAs("coach");
     renderMemberDetail();

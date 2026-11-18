@@ -17,3 +17,10 @@ const RECORD_VIEW_KEYS = ["athlete-summary", "athlete-rms", "athlete-records", "
 export function invalidateRecordViews(queryClient: QueryClient, memberId: string): void {
   for (const name of RECORD_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey: [name, memberId] });
 }
+
+/** Lo que una medida (guardar o anular) mueve: el resumen (conteo y última fecha) y las medidas de ESE socio; sus RMs y récords no cambian. */
+const METRIC_VIEW_KEYS = ["athlete-summary", "athlete-metrics"] as const;
+
+export function invalidateMetricViews(queryClient: QueryClient, memberId: string): void {
+  for (const name of METRIC_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey: [name, memberId] });
+}

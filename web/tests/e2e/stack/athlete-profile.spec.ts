@@ -4,37 +4,13 @@
 // - S9-F3: `?tab=benchmarks` muestra «Fran» y su serie (un resultado de 4:05 creado por el api en una clase de hoy).
 // - `?tab=medidas` se conserva al recargar y abrir la pestaña NO pide ninguna vez `/reveal` (solo el clic en «Mostrar peso»).
 // Sin E2E_BASE_URL se omite. ESCRITO POR EL ROJO: la ejecuta el orquestador contra el stack (P-E2E), no el agente de pruebas.
-import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
-import { crearSocio, darDeBajaSocio, diaLibreDeWod, esperarTransiciones, loginComo, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
+import { expect, test } from "@playwright/test";
+import { axeViolations } from "../helpers/axe";
+import { ahoraMas, cancelarClase, crearClaseDeHoy, crearSocio, darDeBajaSocio, diaBogota, diaLibreDeWod, loginComo, PRIMER_DIA_WOD, sameOriginHeaders, type SocioCreado } from "../helpers/stack";
 
 const ON_STACK = process.env.E2E_BASE_URL !== undefined;
-const TAGS = ["wcag2a", "wcag2aa", "wcag21aa"];
 const WEIGHT_KG = "61,2";
 const API = "/api/v1";
-const MS_MINUTO = 60_000;
-const BOGOTA_OFFSET_MS = 5 * 60 * 60 * 1_000;
-const FIRST_DAY = Date.UTC(2033, 0, 1);
-
-const diaBogota = (instante: Date): string => new Date(instante.getTime() - BOGOTA_OFFSET_MS).toISOString().slice(0, 10);
-
-/** Crea la clase de hoy en `inicio` o en el primer minuto libre de los cinco siguientes (una clase con resultados no se cancela: 409 `session_duplicate` al repetir). */
-async function crearClaseDeHoy(page: Page, headers: Record<string, string>, inicio: Date, nombre: string): Promise<string> {
-  for (let intento = 0; intento < 5; intento += 1) {
-    const startsAt = new Date(inicio.getTime() + intento * MS_MINUTO).toISOString();
-    const respuesta = await page.request.post(`${API}/class-sessions`, { headers, data: { starts_at: startsAt, duration_min: 60, capacity: 10, name: nombre } });
-    if (respuesta.ok()) return ((await respuesta.json()) as { id: string }).id;
-    const codigo = ((await respuesta.json().catch(() => ({}))) as { error?: { code?: string } }).error?.code;
-    if (respuesta.status() !== 409 || codigo !== "session_duplicate") throw new Error(`POST /class-sessions respondió ${String(respuesta.status())}.`);
-  }
-  throw new Error("POST /class-sessions: los cinco minutos siguientes ya tienen una clase de esta spec.");
-}
-
-async function axeViolations(page: Page): Promise<string[]> {
-  await esperarTransiciones(page);
-  const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-  return result.violations.map((v) => `${v.id}: ${v.help} -> ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
-}
 
 test.describe("Pestaña Atleta de la ficha contra el stack", () => {
   test.skip(!ON_STACK, "solo contra el stack (E2E_BASE_URL) con A3 y C2; en preview no hay api");
@@ -50,12 +26,12 @@ test.describe("Pestaña Atleta de la ficha contra el stack", () => {
       // La baja falló: la cancelación de clases se intenta igual y el fallo se relanza al final.
       fallos.push(error instanceof Error ? error : new Error(String(error)));
     }
-    // Con resultados la clase no se cancela (409 locked_by_results, por diseño, S9-D68): solo eso se tolera; cualquier otra respuesta falla. Los WODs de 2033 no se borran (no hay borrado de WODs por diseño).
-    if (porCancelar.length > 0) {
-      const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
-      for (const id of porCancelar) {
-        const cancelada = await page.request.post(`${API}/class-sessions/${id}/cancel`, { headers, data: { reason: "limpieza E2E" } });
-        if (!cancelada.ok() && cancelada.status() !== 409) fallos.push(new Error(`POST /class-sessions/{id}/cancel respondió ${String(cancelada.status())}.`));
+    // Con resultados la clase no se cancela (409 locked_by_results, por diseño, S9-D68): cancelarClase tolera solo eso; cualquier otra respuesta falla. Los WODs de 2033 no se borran (no hay borrado de WODs por diseño).
+    for (const id of porCancelar) {
+      try {
+        await cancelarClase(page, id);
+      } catch (error) {
+        fallos.push(error instanceof Error ? error : new Error(String(error)));
       }
     }
     if (fallos[0]) throw fallos[0];
@@ -89,11 +65,11 @@ test.describe("Pestaña Atleta de la ficha contra el stack", () => {
     await expect(page).toHaveURL(/tab=medidas/);
     const table = page.getByRole("table", { name: "Medidas corporales del socio" });
     await expect(table).toBeVisible();
-    await expect(table.getByRole("button", { name: "Mostrar peso" })).toBeVisible();
+    await expect(table.getByRole("button", { name: /^Mostrar peso/ })).toBeVisible();
     await expect(table).not.toContainText(WEIGHT_KG);
     expect(reveals).toEqual([]);
 
-    await table.getByRole("button", { name: "Mostrar peso" }).click();
+    await table.getByRole("button", { name: /^Mostrar peso/ }).click();
     await expect(table.getByText(`${WEIGHT_KG} kg`)).toBeVisible();
     expect(reveals).toHaveLength(1);
     expect(decodeURIComponent(page.url())).not.toContain(WEIGHT_KG);
@@ -122,7 +98,7 @@ test.describe("Pestaña Atleta de la ficha contra el stack", () => {
 
   test("?tab=benchmarks muestra «Fran» y su serie con la marca de un resultado de 4:05", async ({ page }) => {
     // La clase de hoy empieza dentro de 10 minutos (el check-in no bloquea por hora, N-38): pasadas las 23:49 de Bogotá cruzaría la medianoche.
-    const inicio = new Date(Math.floor((Date.now() + 10 * MS_MINUTO) / MS_MINUTO) * MS_MINUTO);
+    const inicio = ahoraMas(10);
     test.skip(diaBogota(inicio) !== diaBogota(new Date()), "después de las 23:49 de Bogotá la clase de hoy no cabe en el día");
     await page.setViewportSize({ width: 1440, height: 900 });
     const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
@@ -132,7 +108,7 @@ test.describe("Pestaña Atleta de la ficha contra el stack", () => {
     const fran = benchmarks.items.find((item) => item.name === "Fran");
     expect(fran, "falta el benchmark Fran: corre seed-benchmarks").toBeDefined();
     const nombre = `Fran E2E ${Date.now().toString(36)}`;
-    const wodDate = await diaLibreDeWod(page, FIRST_DAY);
+    const wodDate = await diaLibreDeWod(page, PRIMER_DIA_WOD);
     const sesionId = await crearClaseDeHoy(page, headers, inicio, nombre);
     sesiones.push(sesionId);
     // El api exige de 1 a 30 movimientos por WOD (`validate_wod`): basta uno activo cualquiera, sin carga.

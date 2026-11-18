@@ -8,6 +8,7 @@ import { api } from "../../core/api/client";
 import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
+import { collectPages } from "./collectPages";
 
 export const MOVEMENT_CATEGORIES = ["weightlifting", "gymnastics", "monostructural", "other"] as const;
 export const MOVEMENT_UNITS = ["kg", "reps", "m", "cal", "s"] as const;
@@ -110,30 +111,6 @@ export interface CatalogOptions<T> {
   refetch: () => Promise<unknown>;
 }
 
-interface OptionsPage<R> {
-  items: readonly R[];
-  total: number;
-}
-
-interface CollectedOptions<R> {
-  items: R[];
-  truncated: boolean;
-}
-
-/** Pide páginas de 200 hasta cubrir `total` o llegar al tope de páginas. */
-async function collectPages<R>(fetchPage: (offset: number) => Promise<OptionsPage<R>>): Promise<CollectedOptions<R>> {
-  const items: R[] = [];
-  let total = 0;
-  for (let page = 0; page < OPTIONS_MAX_PAGES; page += 1) {
-    const offset = page * OPTIONS_LIMIT;
-    if (page > 0 && offset >= total) break;
-    const result = await fetchPage(offset);
-    total = result.total;
-    items.push(...result.items);
-  }
-  return { items, truncated: total > OPTIONS_MAX_PAGES * OPTIONS_LIMIT };
-}
-
 function toOptions<O>(query: UseQueryResult<{ options: O[]; truncated: boolean }>): CatalogOptions<O> {
   return {
     data: query.data?.options,
@@ -150,7 +127,7 @@ export function useKgMovementOptions(): CatalogOptions<MovementOption> {
   const query = useQuery({
     queryKey: [...MOVEMENTS_QUERY_KEY, "options-kg"],
     queryFn: async ({ signal }) => {
-      const { items, truncated } = await collectPages((offset) => fetchMovements({ limit: OPTIONS_LIMIT, offset, active: true }, signal));
+      const { items, truncated } = await collectPages((offset) => fetchMovements({ limit: OPTIONS_LIMIT, offset, active: true }, signal), { limit: OPTIONS_LIMIT, maxPages: OPTIONS_MAX_PAGES, idOf: (row) => row.id });
       return { options: items.filter((m) => m.is_active && m.unit === KG_UNIT).map((m): MovementOption => ({ value: m.id, label: m.name })), truncated };
     },
   });
@@ -162,7 +139,7 @@ export function useBenchmarkOptions(): CatalogOptions<BenchmarkOption> {
   const query = useQuery({
     queryKey: [...BENCHMARKS_QUERY_KEY, "options"],
     queryFn: async ({ signal }) => {
-      const { items, truncated } = await collectPages((offset) => fetchBenchmarks({ limit: OPTIONS_LIMIT, offset }, signal));
+      const { items, truncated } = await collectPages((offset) => fetchBenchmarks({ limit: OPTIONS_LIMIT, offset }, signal), { limit: OPTIONS_LIMIT, maxPages: OPTIONS_MAX_PAGES, idOf: (row) => row.id });
       return { options: items.map((b): BenchmarkOption => ({ value: b.id, label: b.name, scoreType: b.score_type })), truncated };
     },
   });

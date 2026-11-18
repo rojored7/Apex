@@ -1,6 +1,6 @@
 // S8-F3 (S8-D13, S8-D41): marcas y cargas en pantalla. El contrato lleva gramos enteros; la pantalla, kg con hasta dos decimales.
 import { describe, expect, it } from "vitest";
-import { formatLoadKg, formatScore, formatScoreDelta, formatSeconds, formatWeightKg, gramsToKgInput, isScoreKind, kgInputToGrams, LOAD_MAX_G, SCORE_KINDS } from "./score";
+import { formatLoadKg, formatScore, formatScoreDelta, formatSeconds, formatWeightKg, gramsToKgInput, isCountUpTo, isScoreKind, kgInputToGrams, LOAD_MAX_G, MAX_REPS, MAX_ROUNDS, SCORE_KINDS } from "./score";
 
 describe("formatSeconds", () => {
   it("da minutos y segundos con dos cifras", () => {
@@ -122,5 +122,22 @@ describe("formatScoreDelta", () => {
     expect(formatScoreDelta("time", marks({ seconds: null }), marks({ seconds: 702 }))).toBeNull();
     expect(formatScoreDelta("load", marks({ load_g: 100_000 }), marks({ load_g: null }))).toBeNull();
     expect(formatScoreDelta("none", marks({}), marks({}))).toBeNull();
+  });
+});
+
+describe("isCountUpTo (V7 L5: una sola regla de rondas y repeticiones)", () => {
+  it("acepta enteros de hasta seis dígitos dentro del tope y recorta espacios", () => {
+    expect(isCountUpTo("0", MAX_ROUNDS)).toBe(true);
+    expect(isCountUpTo(" 1000 ", MAX_ROUNDS)).toBe(true);
+    expect(isCountUpTo("100000", MAX_REPS)).toBe(true);
+  });
+
+  it("rechaza lo que pasa el tope, no es entero o tiene más de seis dígitos", () => {
+    expect(isCountUpTo("1001", MAX_ROUNDS)).toBe(false);
+    expect(isCountUpTo("100001", MAX_REPS)).toBe(false);
+    expect(isCountUpTo("12.5", MAX_REPS)).toBe(false);
+    expect(isCountUpTo("-1", MAX_REPS)).toBe(false);
+    expect(isCountUpTo("", MAX_REPS)).toBe(false);
+    expect(isCountUpTo("0000001", MAX_REPS)).toBe(false);
   });
 });

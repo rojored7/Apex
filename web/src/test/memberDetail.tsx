@@ -162,6 +162,8 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
           { path: "/socios/:id/adjuntos", element: <AttachmentsTab /> },
           // S9-F1 (US-184): la pestaña Atleta.
           { path: "/socios/:id/atleta", element: <AthleteTab /> },
+          // V7 (M2): marcador de la hija Resultados (solo se prueba la URL al cambiar de pestaña).
+          { path: "/socios/:id/resultados", element: <p>Hija Resultados</p> },
         ],
       },
       { path: "/socios/:id/editar", element: shell(<MemberFormPage />) },

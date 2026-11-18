@@ -11,7 +11,7 @@ import { Button } from "../../../shared/ui/Button";
 import { cx } from "../../../shared/ui/cx";
 import { useAthleteSummary } from "../api";
 import { summaryError } from "../athleteErrors";
-import { recordTitle, recordValue } from "../recordFormat";
+import { originText, recordTitle, recordValue } from "../recordFormat";
 import type { AthleteSummaryView, SummaryRecordView } from "../schemas";
 import styles from "./SummaryCards.module.css";
 
@@ -95,19 +95,17 @@ function BenchmarksCard({ summary, memberId }: CardProps) {
 }
 
 function Origin({ record }: { record: SummaryRecordView }) {
-  if (record.source === "manual") return <span>manual</span>;
   return (
     <span>
-      <span>automático</span>
-      {record.wod_id === null ? null : (
+      {originText(record)}
+      {record.source === "derived" && record.wod_id !== null ? (
         <>
           {" "}
-          <span>del WOD</span>{" "}
-          <Link className={styles.link} to={`/wods/${encodeURIComponent(record.wod_id)}`}>
-            ver
+          <Link className={styles.link} to={`/wods/${encodeURIComponent(record.wod_id)}`} aria-label={`Ver el WOD de ${recordTitle(record)}`}>
+            Ver
           </Link>
         </>
-      )}
+      ) : null}
     </span>
   );
 }
@@ -154,26 +152,32 @@ function RecordsCard({ summary, memberId }: CardProps) {
   );
 }
 
+function SummaryError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className={cx(styles.state, styles.error)} role="alert">
+      <p className={styles.text}>{message}</p>
+      <Button variant="secondary" onClick={onRetry}>
+        Reintentar
+      </Button>
+    </div>
+  );
+}
+
 export function SummaryCards({ memberId }: SummaryCardsProps) {
   const query = useAthleteSummary(memberId);
   const error = summaryError(query.error);
-  if (error) {
-    return (
-      <div className={cx(styles.state, styles.error)} role="alert">
-        <p className={styles.text}>{error.message}</p>
-        <Button
-          variant="secondary"
-          onClick={() => {
-            void query.refetch();
-          }}
-        >
-          Reintentar
-        </Button>
-      </div>
-    );
-  }
   const summary = query.data;
+  const retry = (
+    <SummaryError
+      message={error?.message ?? ""}
+      onRetry={() => {
+        void query.refetch();
+      }}
+    />
+  );
+  // Sin datos, el error es toda la pantalla; con datos (falló una relectura de fondo) el error va junto a ellos y no los tapa (V7, M10).
   if (summary === undefined) {
+    if (error) return retry;
     return (
       <p className={styles.state} role="status">
         Cargando el resumen…
@@ -182,6 +186,7 @@ export function SummaryCards({ memberId }: SummaryCardsProps) {
   }
   return (
     <div className={styles.state}>
+      {error ? retry : null}
       {summary.truncated ? <p className={styles.truncated}>{TRUNCATED_NOTICE}</p> : null}
       <div className={styles.grid}>
         <MetricsCard summary={summary} memberId={memberId} />

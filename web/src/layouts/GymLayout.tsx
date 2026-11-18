@@ -14,10 +14,8 @@ import { GymContext, type GymContextValue, type GymCounter, type GymHeader } fro
 import { useForcedTheme } from "../shared/hooks/useForcedTheme";
 import { useIdleTimeout } from "../shared/hooks/useIdleTimeout";
 import styles from "./GymLayout.module.css";
+import { TABLET_IDLE_MS } from "./idle";
 import { LeaveTabletDialog } from "./LeaveTabletDialog";
-
-/** Diez minutos sin tocar la tablet cierran la sesión (S7-D24). */
-export const TABLET_IDLE_MS = 10 * 60 * 1000;
 
 export interface TabletOptions {
   /** Devuelve el mensaje de error, o null si la contraseña es la de la cuenta. */

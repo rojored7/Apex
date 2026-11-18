@@ -18,7 +18,7 @@ import { DataTable, type Column } from "../../../shared/ui/DataTable";
 import { Pagination } from "../../../shared/ui/Pagination";
 import { useInvalidateRecord, useRecords } from "../api";
 import { invalidateRecordError, recordsListError } from "../recordErrors";
-import { recordTitle, recordValue } from "../recordFormat";
+import { originText, recordTitle, recordValue } from "../recordFormat";
 import type { RecordView } from "../schemas";
 import styles from "./RecordsTab.module.css";
 
@@ -26,6 +26,8 @@ export interface RecordsTabProps {
   memberId: string;
   /** El socio está dado de baja: sin «Invalidar» (S9-D14). */
   memberDeleted: boolean;
+  /** Se llama tras invalidar con éxito (la pestaña Atleta lo avisa en su región de avisos). */
+  onInvalidated?: () => void;
 }
 
 export const RECORDS_EMPTY = "Todavía no hay récords registrados. Usa «Registrar récord» para guardar el primero.";
@@ -41,11 +43,6 @@ const INVALIDATED_OPTIONS = [{ value: "1", label: "Ver invalidados" }];
 
 type Kind = "rm" | "benchmark";
 const asKind = (value: string | undefined): Kind | undefined => (value === "rm" || value === "benchmark" ? value : undefined);
-
-function originText(row: RecordView): string {
-  if (row.source === "manual") return row.recorded_by_name ? `Manual · ${row.recorded_by_name}` : "Manual";
-  return row.result_source === "kiosk" ? "Automático (tablet)" : "Automático del WOD";
-}
 
 function StateCell({ row }: { row: RecordView }) {
   if (row.invalidated_at !== null) {
@@ -103,7 +100,7 @@ function buildColumns(canInvalidate: boolean, onInvalidate: (row: RecordView) =>
   ];
 }
 
-export function RecordsTab({ memberId, memberDeleted }: RecordsTabProps) {
+export function RecordsTab({ memberId, memberDeleted, onInvalidated }: RecordsTabProps) {
   const canWrite = useCan("athletes.write");
   const list = useListParams<"kind" | "invalidated">({ filters: ["kind", "invalidated"] });
   const { limit, offset } = list.params;
@@ -138,6 +135,7 @@ export function RecordsTab({ memberId, memberDeleted }: RecordsTabProps) {
     try {
       await invalidate.mutateAsync(invalidating.id);
       refocus.current = true;
+      onInvalidated?.();
     } catch (error) {
       throw invalidateRecordError(error);
     }

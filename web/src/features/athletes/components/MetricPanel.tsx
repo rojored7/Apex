@@ -6,16 +6,15 @@
 // - El formulario vive solo mientras el panel está abierto: al cerrar o guardar se desmonta y ningún valor queda para la próxima vez.
 //   La mutación pasa por useSensitiveMutation (gcTime 0 y reset()): nada de salud queda en la caché (L-7).
 // DESIGN-GAP: «Cintura» y las medidas configurables del diseño no están en el contrato (MetricIn solo trae peso, altura, grasa y notas).
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { zodResolver } from "../../../shared/lib/zodResolver";
-import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
-import { SidePanel } from "../../../shared/ui/SidePanel";
 import { useAddMetric } from "../api";
 import { METRIC_ERROR_MESSAGES, fieldErrorOf, isConsentRequired, metricSaveError } from "../athleteErrors";
 import { EMPTY_METRIC_FORM, metricFormSchema, parseMetricForm, type MetricFormValues } from "../schemas";
+import { AthleteFormPanel, useSaveFlow } from "./AthleteFormPanel";
 import styles from "./AthletePanel.module.css";
 
 export interface MetricPanelProps {
@@ -49,66 +48,52 @@ function MetricPanelForm({ memberId, consentMissing, onClose, onSaved }: Omit<Me
     register,
     formState: { errors, isDirty },
   } = form;
-  const [generalError, setGeneralError] = useState<string | null>(null);
+  const flow = useSaveFlow();
   const [consentError, setConsentError] = useState(false);
-  const inFlight = useRef(false);
-  const isPending = add.isPending;
-
-  const close = (): void => {
-    if (!isPending) onClose();
-  };
 
   const save = async (values: MetricFormValues): Promise<void> => {
     // Sin autorización de datos nada sale, ni por un Enter en un campo (H-1): el botón ya está deshabilitado.
-    if (consentMissing === true || inFlight.current) return;
-    inFlight.current = true;
-    setGeneralError(null);
-    setConsentError(false);
-    try {
-      await add.mutateAsync(parseMetricForm(values));
-      onSaved();
-    } catch (error) {
-      const target = fieldErrorOf(error);
-      if (target) form.setError(target.path, { type: "server", message: target.message }, { shouldFocus: true });
-      else if (isConsentRequired(error)) setConsentError(true);
-      else setGeneralError(metricSaveError(error)?.message ?? METRIC_ERROR_MESSAGES.saveFailed);
-    } finally {
-      inFlight.current = false;
-    }
+    if (consentMissing === true) return;
+    await flow.run(
+      async () => {
+        setConsentError(false);
+        await add.mutateAsync(parseMetricForm(values));
+        onSaved();
+      },
+      (error) => {
+        const target = fieldErrorOf(error);
+        if (target) form.setError(target.path, { type: "server", message: target.message }, { shouldFocus: true });
+        else if (isConsentRequired(error)) setConsentError(true);
+        else flow.setGeneralError(metricSaveError(error).message);
+      },
+    );
   };
 
   return (
-    <SidePanel
-      open
+    <AthleteFormPanel
       title={METRIC_PANEL_TITLE}
-      isDirty={!isPending && isDirty}
-      onClose={close}
-      footer={
-        <Button type="submit" form={formId} loading={isPending} disabled={consentMissing === true}>
-          Guardar medidas
-        </Button>
-      }
+      formId={formId}
+      submitLabel="Guardar medidas"
+      isPending={add.isPending}
+      isDirty={isDirty}
+      generalError={flow.generalError}
+      submitDisabled={consentMissing === true}
+      onClose={onClose}
+      onSubmit={(event) => void form.handleSubmit(save)(event)}
     >
-      <form id={formId} className={styles.form} noValidate aria-label={METRIC_PANEL_TITLE} onSubmit={(event) => void form.handleSubmit(save)(event)}>
-        {consentMissing === true && !consentError ? <ConsentNotice memberId={memberId} alert={false} /> : null}
-        {consentError ? <ConsentNotice memberId={memberId} alert /> : null}
-        {generalError ? (
-          <p className={styles.error} role="alert">
-            {generalError}
-          </p>
-        ) : null}
-        <Field label="Fecha de la medición" type="date" error={errors.measured_on?.message} {...register("measured_on")} />
-        <Field label="Peso (kg)" hint="Con un decimal, de 20 a 400." inputMode="decimal" autoComplete="off" error={errors.weight_kg?.message} {...register("weight_kg")} />
-        <div className={styles.pair}>
-          <Field label="Altura (cm)" inputMode="numeric" autoComplete="off" error={errors.height_cm?.message} {...register("height_cm")} />
-          <Field label="% grasa" inputMode="numeric" autoComplete="off" error={errors.body_fat_pct?.message} {...register("body_fat_pct")} />
-        </div>
-        <Field label="Notas" name="notes" hint="Opcional. Hasta 500 caracteres." error={errors.notes?.message}>
-          {(control) => <textarea {...control} rows={4} {...register("notes")} />}
-        </Field>
-        <p className={styles.note}>Las medidas se guardan cifradas. No escribas documentos ni teléfonos en las notas.</p>
-      </form>
-    </SidePanel>
+      {consentMissing === true && !consentError ? <ConsentNotice memberId={memberId} alert={false} /> : null}
+      {consentError ? <ConsentNotice memberId={memberId} alert /> : null}
+      <Field label="Fecha de la medición" type="date" error={errors.measured_on?.message} {...register("measured_on")} />
+      <Field label="Peso (kg)" hint="Con un decimal, de 20 a 400." inputMode="decimal" autoComplete="off" error={errors.weight_kg?.message} {...register("weight_kg")} />
+      <div className={styles.pair}>
+        <Field label="Altura (cm)" inputMode="numeric" autoComplete="off" error={errors.height_cm?.message} {...register("height_cm")} />
+        <Field label="% grasa" inputMode="numeric" autoComplete="off" error={errors.body_fat_pct?.message} {...register("body_fat_pct")} />
+      </div>
+      <Field label="Notas" name="notes" hint="Opcional. Hasta 500 caracteres." error={errors.notes?.message}>
+        {(control) => <textarea {...control} rows={4} {...register("notes")} />}
+      </Field>
+      <p className={styles.note}>Las medidas se guardan cifradas. No escribas documentos ni teléfonos en las notas.</p>
+    </AthleteFormPanel>
   );
 }
 

@@ -7,8 +7,9 @@
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
 import { isApiError, type ApiError } from "../../core/api/errors";
-import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY, HTTP_UNPROCESSABLE } from "../../core/api/status";
+import { HTTP_CONFLICT, HTTP_FORBIDDEN, HTTP_NOT_FOUND, HTTP_TOO_MANY } from "../../core/api/status";
 import { connectionMessage, statusMessage, toFormError, toScreenError, waitText } from "../../shared/lib/apiMessages";
+import { COMMON_ERROR_MESSAGES, fieldErrorIn, type FieldErrorTarget } from "./commonErrors";
 import type { MetricFormValues } from "./schemas";
 
 export const METRIC_ERROR_MESSAGES = {
@@ -16,14 +17,15 @@ export const METRIC_ERROR_MESSAGES = {
   summaryForbidden: "No tienes permiso para ver el perfil del atleta.",
   listFailed: "No pudimos cargar las medidas. Intenta de nuevo en un momento.",
   listForbidden: "No tienes permiso para ver las medidas de este socio.",
-  memberGone: "Este socio ya no existe. Vuelve a Socios y elige otro.",
-  tooManyReads: (wait: string): string => `Hiciste muchas consultas seguidas. Espera ${wait} e intenta de nuevo.`,
+  memberGone: COMMON_ERROR_MESSAGES.memberGone,
+  tooManyReads: COMMON_ERROR_MESSAGES.tooManyReads,
   consentMissing: "Falta la autorización de datos del socio. Regístrala en su ficha para guardar medidas.",
   saveForbidden: "No tienes permiso para registrar medidas. Si lo necesitas, pídeselo a un administrador.",
   saveGone: "El socio ya no existe o está dado de baja: no se pueden registrar medidas.",
   saveTooMany: (wait: string): string => `Guardaste muchas medidas seguidas. Espera ${wait} e intenta de nuevo.`,
   saveFailed: "No pudimos guardar las medidas. Intenta de nuevo en un momento.",
   revealDeleted: "Este socio está dado de baja: solo un administrador puede mostrar sus medidas.",
+  revealUnknown: "No pudimos cargar la ficha del socio y no sabemos si puedes ver este dato. Recarga la página e intenta de nuevo.",
   revealForbidden: "No tienes permiso para ver este dato",
   revealVoided: "Esta medición está anulada y ya no se puede mostrar.",
   revealTooMany: "Demasiadas consultas; espera un momento",
@@ -62,15 +64,10 @@ const FIELD_ERRORS: Readonly<Record<string, { path: FieldPath<MetricFormValues>;
   measured_on: { path: "measured_on", message: "Revisa la fecha: el servidor no la aceptó. Corrígela y vuelve a guardar." },
 };
 
-export interface MetricFieldError {
-  path: FieldPath<MetricFormValues>;
-  message: string;
-}
-
+export type MetricFieldError = FieldErrorTarget<MetricFormValues>;
 /** El 422 con `field` conocido va bajo su campo; cualquier otro error es general. */
 export function fieldErrorOf(error: unknown): MetricFieldError | null {
-  if (!isApiError(error) || error.status !== HTTP_UNPROCESSABLE || error.field === undefined) return null;
-  return FIELD_ERRORS[error.field] ?? null;
+  return fieldErrorIn(FIELD_ERRORS, error);
 }
 
 /** ¿El api dice que falta la autorización de datos del socio? (409 `consent_required`, H-1). */
@@ -87,16 +84,16 @@ function saveText(error: ApiError): string {
 }
 
 /** El mensaje general de un error al guardar medidas (los de campo salen de `fieldErrorOf`). */
-export function metricSaveError(error: unknown): ApiError | null {
-  return error ? toFormError(error, saveText, M.saveFailed) : null;
+export function metricSaveError(error: unknown): ApiError {
+  return toFormError(error, saveText, M.saveFailed);
 }
 
 /** El error de «Mostrar»: el api dice 403 y la pantalla explica si es por la baja del socio (S9-D34). */
-export function revealMetricError(error: unknown, memberDeleted: boolean): string {
+export function revealMetricError(error: unknown, memberDeleted: boolean, memberUnknown = false): string {
   if (!isApiError(error)) return M.revealFailed;
   const connection = connectionMessage(error);
   if (connection !== null) return connection;
-  if (error.status === HTTP_FORBIDDEN) return memberDeleted ? M.revealDeleted : M.revealForbidden;
+  if (error.status === HTTP_FORBIDDEN) return memberUnknown ? M.revealUnknown : memberDeleted ? M.revealDeleted : M.revealForbidden;
   if (error.status === HTTP_CONFLICT && error.code === API_ERROR_CODES.metricVoided) return M.revealVoided;
   if (error.status === HTTP_TOO_MANY) return M.revealTooMany;
   return M.revealFailed;

@@ -281,3 +281,16 @@ Rojo medido antes de corregir (`npx vitest run` de `features/athletes`, `shared/
 **Rojo E2E (orquestador, P-E2E, imagen web con F2 sin F3):** primer intento, el caso nuevo falló en `POST /wods` (311 ms): la spec mandaba `movements: []` y el api exige de 1 a 30 movimientos (`validate_wod`). No es un rojo válido. Arreglo del orquestador en la spec: un movimiento activo cualquiera, sin carga, `21-15-9`. Segundo intento: 1 failed, exit 1. No existe el chip «Fran» de la subpestaña Benchmarks (motivo correcto); los datos ya se crean bien. Los dos casos de F1 siguen pasando (2 passed en el primer intento). `.env` restaurado.
 **Verde E2E:** P-REBUILD 3 desde el worktree (build exit 0). P-E2E de `athlete-profile.spec.ts` (3 casos, con el de Benchmarks) y `athlete-records.spec.ts` (2 casos): corrida 1, 5 passed (11,7 s); corrida 2, 5 passed (12,0 s); exit 0. `.env` restaurado.
 **E2E tras las revisiones** (P-REBUILD 3 desde el worktree, build exit 0): `athlete-profile.spec.ts` y `athlete-records.spec.ts`, 5 passed (9,8 s); `kiosk-idle.spec.ts` 2 skipped (su corte de las 23:19 de Bogotá; corrió a las 23:43). La segunda corrida va después de medianoche, en el bloque de evidencia.
+
+## Cierre de la Wave 5a (S9-F1, 2026-11-17)
+
+**P-GATES** (worktree limpio `.claude/worktrees/gates` en `29d8932`, la rama del sprint con F1 integrado por `merge --ff-only`): api lint, formato y mypy en verde; pytest 12.304 passed, 103 skipped, 47 deselected (1 h 20 min, con un agente de front en paralelo), cobertura 96 %; scripts y Caddy en verde; web lint, tsc, Vitest 268 archivos y 4.734 pruebas (cobertura 95,86 % de líneas) y build: `run-gates: todos los gates en verde (wave 5a)`, exit 0. `src/features/system/api.test.tsx` no falló.
+**P-REBUILD 3** (árbol principal, `GIT_SHA=29d8932`): build exit 0, `up -d --no-build --force-recreate web`, web `healthy`, `/socios` 200.
+**Preview 8180** (guion Playwright local que lee la clave del archivo, admin, socio ficticio dado de baja con una medición del E2E; tema forzado con `apex.theme` en localStorage, porque el tema no sigue a `prefers-color-scheme`): Resumen y Medidas en claro y oscuro a 1440 px. Píldoras de las cinco subpestañas, tarjetas del resumen, tabla con «•••» y «Mostrar», «—» sin dato, aviso de solo lectura por la baja; los dos temas con sus tokens. Hallazgo visual LOW: en la tabla de Medidas la celda del peso («••• Mostrar») queda unos píxeles más abajo que las demás celdas de la fila; se corrige en S9-F2 (misma feature).
+El hallazgo visual se corrigió en S9-F2 (`MetricsTab`: celdas con la misma franja de alto).
+
+### Sello y evidencia (S9-F3)
+
+- Gate sellante `slice-gate.sh web/athletes src/features/athletes/components/BenchmarksTab.test.tsx`: 58 passed, exit 0. No sellante `web/shared` (TrendChart): exit 0.
+- Checkpoint `dc06f8c`.
+- Segunda corrida E2E después de medianoche (imagen con F3 y sus revisiones): `athlete-profile`, `athlete-records` y `kiosk-idle`, 7 passed (9,0 s), exit 0; `.env` restaurado.

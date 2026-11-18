@@ -25,7 +25,7 @@ Estado: versión 0.1.0, en cierre del Sprint 4B (continuidad operativa y release
 
 - `docs/ddd/`: plan de trabajo aprobado, decisiones (`DECISIONES.md`) y sprints.
 - `docs/adr/`: decisiones de arquitectura (ADR-001 monolito modular, ADR-002 criptografía, ADR-003 pagos inmutables, ADR-004 serialización canónica de la auditoría).
-- `docs/operacion/`: guías para quien opera el servidor: `instalar-en-servidor.md`, `actualizar.md`, `respaldo-y-restauracion.md`, `rotar-llave.md`, `importar-socios.md`, `demo.md`.
+- `docs/operacion/`: guías para quien opera el servidor: `instalar-en-servidor.md`, `actualizar.md`, `respaldo-y-restauracion.md`, `rotar-llave.md`, `importar-socios.md`, `demo.md`, `llaves.md`, `adjuntos.md`, `tls.md`, `openbao.md`, `avisos.md`, `clases.md`, `wods.md`, `tv.md`, `atleta.md`.
 - `docs/RUNBOOK.md`: procedimientos y diagnóstico por tema (sesión y límites, worker, auditoría, respaldo, despliegue y rollback en la sección 12).
 - `docs/design/`: diseño aprobado del front. `docs/openapi.json`: contrato del API.
 

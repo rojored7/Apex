@@ -150,7 +150,7 @@ apex/
     design/              # diseño aprobado del front
     openapi.json         # contrato exportado del API
     adr/                 # ADR-001-monolito-modular.md, ADR-002-criptografia.md, ADR-003-pagos-inmutables.md, ADR-004-serializacion-canonica-de-auditoria.md y README.md (plantilla de seis secciones); cambiarlos exige detenerse y preguntar (S4B-D47)
-    operacion/           # guías para quien opera: instalar-en-servidor, actualizar, respaldo-y-restauracion, rotar-llave, importar-socios, demo; desde S6 `llaves.md`, `adjuntos.md` y `tls.md`
+    operacion/           # guías para quien opera: instalar-en-servidor, actualizar, respaldo-y-restauracion, rotar-llave, importar-socios, demo, openbao, avisos, clases, wods, tv y atleta; desde S6 `llaves.md`, `adjuntos.md` y `tls.md`
     plantillas/          # importar-socios.xlsx (plantilla del import-members)
     RUNBOOK.md           # operación del día a día; §12 despliegue, rollback y `migrations: mismatch` (B4)
   .env.example
@@ -158,7 +158,7 @@ apex/
   .env.seed.example      # ADMIN_* del primer seed; la copia .env.seed solo la lee tools
   .pre-commit-config.yaml
   .github/workflows/ci.yml        # lint, pruebas, imágenes, E2E y prod-smoke
-  .github/workflows/nightly.yml   # diario y a mano: `tv-soak`, la prueba de 12 h de la TV con reloj acelerado, fuera del gate de PR (Sprint 8, S8-D20)
+  .github/workflows/nightly.yml   # diario y a mano, fuera del gate de PR: `tv-soak` (12 h de la TV con reloj acelerado, Sprint 8, S8-D20) y `tv-soak-real` (5 h reales, solo por `workflow_dispatch` con `real_hours` mayor que 0 y hasta 5,5; nunca por `schedule`; S9-D38, S9-D66)
   .github/workflows/release.yml   # etiqueta vX.Y.Z: verify (versión, imágenes, prod-smoke, contrato) y Release en borrador; sin push de imágenes
   LICENSE, CHANGELOG.md, README.md  # licencia propietaria, versiones y mapa de la documentación
 ```
@@ -301,7 +301,7 @@ La carpeta `docs/design/` es la fuente de verdad del front. El front vive en `we
 2. Busca la ruta que vas a construir en `docs/design/ROUTES.md`: ahí está la pantalla de referencia, el rol que la ve y los endpoints que consume.
 3. Abre el HTML de esa pantalla en `docs/design/screens/<Clave>.html` y reprodúcelo en React con los mismos textos, la misma estructura, los mismos estados y las mismas acciones. Mira también `<Clave>.dark.html` para el tema oscuro (la TV solo existe en oscuro).
 4. Usa solo las variables de `docs/design/tokens.css` (copiado en `web/src/core/styles/tokens.css`). Ningún color ni fuente literal en componentes.
-5. Los componentes compartidos viven en `web/src/shared/ui/` con los nombres que da `DESIGN.md` (TopBar, SideNav, PageHeader, Button, StatusTag, FilterBar, DataTable, Pagination, Chips, Tabs, KpiCard, SidePanel, ConfirmModal, Field, MaskedValue, HistoryAside). Si uno no existe, créalo ahí antes de usarlo en una pantalla; nunca dupliques estilos por pantalla. Los hooks y esquemas que comparten dos features viven en `web/src/shared/data/`; una feature nunca importa de otra.
+5. Los componentes compartidos viven en `web/src/shared/ui/` con los nombres que da `DESIGN.md` (TopBar, SideNav, PageHeader, Button, StatusTag, FilterBar, DataTable, Pagination, Chips, Tabs, KpiCard, SidePanel, ConfirmModal, Field, MaskedValue, HistoryAside, TrendChart; `StatusTag` con `mark="best"` y `Tabs` con `variant="pills"`, S9-F1 y S9-F3). Si uno no existe, créalo ahí antes de usarlo en una pantalla; nunca dupliques estilos por pantalla. Los hooks y esquemas que comparten dos features viven en `web/src/shared/data/`; una feature nunca importa de otra.
 6. Toda lista se pagina en el servidor. Todo formulario usa React Hook Form + Zod. Todo dato del servidor pasa por TanStack Query.
 7. Los logos de `docs/design/assets/logo/` se copian a `web/public/brand/`.
 8. Si algo del diseño no se puede cumplir o falta una pantalla, no inventes: deja un comentario `// DESIGN-GAP:` explicando qué falta y sigue con lo demás.

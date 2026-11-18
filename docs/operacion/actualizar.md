@@ -132,8 +132,9 @@ el primer resultado que se cargue en v0.6 de cada socio quedaría como su «RM»
 mejores de antes. Una vez que `deploy.sh` termine con 0 (después del `up`), corre:
 
 ```
-docker compose --profile tools run --rm tools derive-records --dry-run --as <correo de un admin>
-docker compose --profile tools run --rm tools derive-records --as <correo de un admin>
+DC="docker compose --env-file .env --env-file .env.ops -f infra/compose.yml"
+$DC --profile tools run --rm tools derive-records --dry-run --as <correo de un admin>
+$DC --profile tools run --rm tools derive-records --as <correo de un admin>
 ```
 
 El primero solo cuenta lo que crearía y no escribe nada. El segundo lo hace. Repetirlo no duplica:

@@ -94,6 +94,7 @@ La TV se prueba con dos corridas automáticas en GitHub Actions (`.github/workfl
 - **5 h reales (`tv-soak-real`)**: la misma spec sin `page.clock` (`SOAK_REAL_HOURS`), con temporizadores, recolección de memoria y repintado reales. Toma una muestra del heap cada 10 minutos, aplica el mismo criterio del 20 % entre el primer y el último cuarto y exige cero errores de consola. El heap queda en el resumen del job (`$GITHUB_STEP_SUMMARY`). Solo corre por `workflow_dispatch` con `real_hours` distinto de 0 (por defecto 0: un disparo manual sin entrada no la corre, y se dispara con `real_hours=5`; tope 5,5; un runner alojado corta a las 6 h); nunca con `schedule`.
 
 Ambas son automáticas. Una corrida de 12 h reales seguidas no se prueba así: se descartó por el corte del runner y por no dejar procesos de fondo en el equipo local.
+El resultado de cada disparo de las 5 h reales (éxito o fallo, enlace a la corrida y el heap del resumen) se anota en el cuaderno del sprint (`docs/scratch/sprint-NN.md`) y en el CHANGELOG de la versión; la corrida no se da por hecha sin esa nota.
 
 ### Correr la prueba a mano (local)
 
@@ -127,6 +128,7 @@ Notas:
 - En NTFS (Windows) `umask` no cambia los permisos del archivo: ahí el archivo queda legible por tu usuario según las ACL de la carpeta temporal; lo que protege es que se borra al salir. Prefiere correrlo en Linux o WSL.
 - Si el token es tuyo y no el de git, usa uno de alcance fino (fine-grained) limitado a este repositorio con solo el permiso «Actions: write» (y «Metadata: read»).
 - `real_hours` vale `0` por defecto: un disparo sin entrada corre solo `tv-soak`; con `real_hours=5` corre los dos jobs (`tv-soak` y `tv-soak-real`). `tv-soak-real` tiene su propio grupo de concurrencia: no deja en espera al `tv-soak` nocturno.
+- **`real_hours` solo es seguro con un número mayor que 0 (hasta 5,5).** El `if` del job `tv-soak-real` compara con la cadena `'0'`: `0.0`, `00` o un valor vacío no son `'0'`, así que el job arranca y falla de inmediato en el paso «validar real_hours» (no deja la prueba a medias, pero gasta un runner). Para no correrla deja el valor en `0` o no escribas nada. Desde la API REST, pasa siempre `"real_hours":"5"` o `"0"`.
 
 ### Observación en la TV del gimnasio
 

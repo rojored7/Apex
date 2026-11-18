@@ -875,3 +875,19 @@ Método: por cada regla nueva del guion, una copia alterada de `nightly.yml` en 
 **P-REBUILD 2, 3 y 4** (desde el árbol principal, `GIT_SHA=5e46be2`): imágenes `apex-api:local` y `apex-web:local` reconstruidas, `up -d --no-build --force-recreate api worker web`. `/health` 8181: `status ok`, `db ok`, `migrations ok`, `crypto ok`, `version 5e46be2` (`backup: attention`, como antes). api, worker y web `healthy`; web 8180 responde 200.
 
 **Smoke 8181** (`x1_smoke.py`): admin y coach, `GET /notifications/today` 200 (2 filas, todas con `can_whatsapp`) y `GET /notifications` 200 (5 filas, todas con el campo, 2 en `true`, ninguna `true` fuera de `whatsapp_link`); `crypto_ops` y `audit_log` sin cambio tras leer.
+
+## S9-V7d · Documentación tras la revisión de Fase 4
+
+Solo documentación. Comprobado en código: `athletes/metrics.py` (baja, 403 al coach, 404 en escrituras), `athletes/rules.py` (`SELF_UNDO_WINDOW_H = 24`), `athletes/router.py` (cubetas `members-reveal*`), `cli_ops/derive_records.py` (`--dry-run`, `--as`, salida 1), `audit/router.py` (filtros `action`, `table`, `user_id`, `subject_member_id`, `from`, `to`; `athletes.body_metrics` está entre las tablas auditadas), `core/alerts_telegram.py` (`_es_repetida`: clave código + job, 60 s), `nightly.yml:70` y `:84-90`.
+
+- **M1**: `docs/operacion/atleta.md` suma baja, anular/invalidar con regla del coach, cupo compartido, rotar la llave y la alerta `athletes_derive_skipped`. `docs/operacion/llaves.md:40` y `rotar-llave.md:25` listan `athlete.metric`. `docs/RUNBOOK.md` gana §15 (índice y sección al final); `DECISIONES.md` S9-D27 pasa de «RUNBOOK §17» a «§15» (no hay §15 a §17 previos: el RUNBOOK termina en §14).
+- **M2**: `actualizar.md:135-139` y `atleta.md` usan `$DC` con `--env-file .env --env-file .env.ops -f infra/compose.yml`.
+- **L3**: `BRECHAS.md:306`, «Unidad para cargas» ahora `DESIGN-GAP` (S9-D25 (3), fila 17.3).
+- **L4**: `ROUTES.md:29` actualizado (sin «PR»/«vs. su anterior»; serie y gráfica en Atleta > Benchmarks).
+- **L5**: `BRECHAS.md` filas 17.6 (Escaló), 17.7 (editar récord), 17.8 (Exportar progreso, Laura portal) y 17.9 (3RM/5RM/máx. reps en RmsTab y RecordPanel). Cintura y gráfica de peso ya estaban en 17.1.
+- **L6**: `CLAUDE.md` líneas de `operacion/`, `nightly.yml` (`tv-soak-real`, `real_hours`) y regla 5 del front (`TrendChart`, `StatusTag mark`, `Tabs variant`); `README.md` mapa de `docs/operacion/` completo.
+- **L7 y L8**: `tv.md` documenta que `real_hours` distinto de un número mayor que 0 (`0.0`, `00`, vacío) entra y falla en «validar real_hours», y que cada disparo se anota en el cuaderno y el CHANGELOG.
+- **M-1**: `atleta.md`, sección «Socio dado de baja y supresión»; `RUNBOOK.md:360` aclara que las medidas de una baja solo las revela un admin.
+- **L-1**: `atleta.md` y `RUNBOOK.md:358` y §15: `GET /api/v1/audit?action=reveal&table=athletes.body_metrics` y pantalla Auditoría.
+- **L-2**: `atleta.md` y RUNBOOK §15: deduplicación de 60 s; correr `derive-records` completo.
+- No comprobado en ejecución: que la pantalla Auditoría ofrezca el filtro por acción en la interfaz (sí lo hace el contrato de `GET /audit`).

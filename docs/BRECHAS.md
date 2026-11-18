@@ -303,7 +303,7 @@ Pantallas `Socio_Ficha.html` (pestaña Datos) y `Socio_Form.html` en modo editar
 - Sexo y teléfono: el diseño los marca con asterisco (obligatorios); el alta los deja opcionales, como fija N-19. Aceptada.
 - Caja "Historial reciente" de la pestaña Datos: llega con la pestaña Historial (US-106, Sprint 4A). Depende de versión futura (Sprint 4A).
 - Foto, firma, documento firmado y archivo: llegan con los adjuntos (v0.3, EP-19). Depende de versión futura.
-- "Acceso al portal": v1.0. "Unidad para cargas": v0.6 (atleta). "Observaciones de salud": no existen en el modelo (M-5). Depende de versión futura; las observaciones no tienen modelo.
+- "Acceso al portal": v1.0. "Unidad para cargas": `DESIGN-GAP` (S9-D25 (3), fila 17.3: RM = 1RM en kg). "Observaciones de salud": no existen en el modelo (M-5). Depende de versión futura; las observaciones no tienen modelo.
 - Guardar: el alta vuelve a la lista con aviso (decisión de S2-F6); la edición vuelve a la ficha con "Cambios guardados". El diseño pide "Guardar y vender membresía" y el front no lo ofrece; la venta se alcanza desde la ficha. Pendiente de diseño.
 - Baja y reactivación: la confirmación usa `ConfirmModal` de DESIGN.md; el diseño no la dibuja. Aceptada.
 
@@ -664,3 +664,7 @@ El Sprint 9 (v0.6) construye `Atleta_Perfil` (pestaña Atleta de la ficha, `/soc
 | 17.3 | `Movimientos.html` | «Unidad preferida» (lb), «Tipos de récord», 3RM, 5RM y «máx. reps»: RM = 1RM en kg sobre movimientos con `unit = kg` (N-45). | S9-D25 (3) | `DESIGN-GAP` |
 | 17.4 | `Socio_Ficha` | `members.hide_on_tv`: quien decide ocultarse es el socio desde el portal; la TV ya excluye bajas y socios sin autorización. | S9-D25 (1), S9-D37 P4 | movida a EP-25 |
 | 17.5 | `Atleta_Perfil.html` | «Registrar medidas» se deshabilita, con enlace a la ficha, si el socio no tiene autorización de datos vigente (409 `consent_required`). | S9-D29 | resuelta en el plan (F1) |
+| 17.6 | `Atleta_Perfil.html` (Benchmarks) | La columna «Escaló» (a qué nivel llegó el socio) no está en el contrato: `AttemptOut` no la trae. Va una nota «Solo se compara entre intentos del mismo nivel.» en `BenchmarksTab.tsx`. La serie y la gráfica (`TrendChart`) sí existen (S9-F3). | S9-D25 (3), S9-F3 | `DESIGN-GAP` |
+| 17.7 | `Atleta_Perfil.html` (Récords) | «Editar» un récord: el api no edita; se invalida el anterior y se registra uno nuevo (`RecordsTab.tsx`, `RecordPanel.tsx`). | S9-D13 | `DESIGN-GAP` |
+| 17.8 | `Atleta_Perfil.html` | «Exportar progreso» y «Laura (portal)»: no hay ruta de exportación del atleta ni portal en v0.6 (`AthleteTab.tsx`, `SummaryCards.tsx`). | S9-D25, EP-25 | `DESIGN-GAP`, portal en v1.0 |
+| 17.9 | `Atleta_Perfil.html` (RMs y Récords) | 3RM, 5RM, «máx. reps» y unidad preferida en `RmsTab.tsx` y `RecordPanel.tsx`: mismo caso que la fila 17.3. | S9-D25 (3) | `DESIGN-GAP` |

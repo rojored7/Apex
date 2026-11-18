@@ -339,3 +339,8 @@ Base: `eafe605`. Línea base (athletes, shared, members y results): 116 archivos
 | 12 | Specs | guardián verde | helpers en `tests/e2e/helpers/stack.ts` (y `axe.ts` aparte para no cargar axe en vitest); `cancelarClase` tolera solo `locked_by_results` por `error.code`; kiosk-idle con try/finally y `TABLET_IDLE_MS` en `src/layouts/idle.ts`; soak acelerado recoge errores de consola |
 
 Pruebas de la ficha: los botones «Mostrar …» se buscan por `/^Mostrar peso/` en las pruebas y specs que los usaban con nombre exacto.
+
+**E2E de V7f contra el stack** (imagen web del worktree, api en `28419f5` con la 0044): primera corrida de `athlete-guards`, `athlete-live`, `athlete-profile`, `athlete-records` y `kiosk-idle`: 10 passed, 2 failed.
+- `athlete-guards` (socio sin autorización): axe `color-contrast` en «Ir a la ficha del socio», `--blue-deep` sobre `--surface` = 4,48:1. Arreglo: el aviso (`.error`, `.consent` de `AthletePanel.module.css`) va sobre `--card` (blanco; en oscuro #33B5EA sobre #1F2224 pasa de sobra).
+- `athlete-live`: la pantalla `/clases/:id/resultados` es ruta de tablet (`TABLET_PATH`): entrar arma el modo quiosco y salir pide la contraseña (`useBlocker`, por diseño). La spec se reescribió: RM de 100 kg por el api, «Récords» → «Ver el WOD» → «Todos los resultados» → «Anular» con motivo, dos veces atrás y «RMs por movimiento» sin el RM, sin recargar (staleTime 30 s: sin la invalidación se vería la caché).
+- Tras el arreglo: `athlete-guards` y `athlete-live` 2 corridas verdes; `athlete-live` sola 2 corridas verdes. Sello `web/athletes` (300 passed). Commit `2d06167` (rebasado sobre `28419f5`).

@@ -310,3 +310,8 @@ El hallazgo visual se corrigió en S9-F2 (`MetricsTab`: celdas con la misma fran
 **Capturas** (guion Playwright local, admin, un login por tema; tema por `apex.theme`): las cinco subpestañas en 768, 1024 y 1440, claro y oscuro: 30 capturas, ningún desborde horizontal de la página. El primer intento del oscuro se cortó en el login (cuarto login en un minuto: el límite de intentos de Nginx); el guion pasó a un solo login por tema.
 Hallazgos visuales (LOW), corregidos antes de cerrar: (1) en Medidas los «—» de Altura, % grasa y Notas quedaban más arriba que la fecha y el «•••»; (2) `TrendChart` con un solo intento pintaba una línea corta suelta abajo; (3) el texto «Se corrige corrigiendo el resultado que lo originó.» era redundante.
 Arreglos en el checkpoint `0a20569` (sello `web/athletes` con RecordsTab, MetricsTab, MetricField y BenchmarksTab: 156 passed). Imagen web reconstruida desde el worktree: P-E2E de `athlete-profile` y `athlete-records`, 5 passed. Capturas repetidas en claro (15): la fila de Medidas queda alineada, la gráfica de un punto ya no tiene la línea suelta y el texto de Récords dice «Para cambiarlo, corrige el resultado que lo originó.».
+
+## Gates de la Wave 5b (2026-11-18)
+
+- `run-gates.sh 5b` sobre `4725fcd`: verde (EXIT=0). Api 12304 pasadas, cobertura 96 %; web 4994 pasadas en 277 archivos, cobertura de líneas 97,66 %.
+- Pendiente al cortar por tope de uso: informe del agente V7b (tiene `apex-migracion.flag`, migración 0044, api parada); E2E de V7f (`eda651d`, specs athlete-guards y athlete-live nuevas); merge del worktree; V1 a V9; Sprint 10.

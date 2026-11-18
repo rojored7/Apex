@@ -140,3 +140,28 @@ $DC --profile tools run --rm tools derive-records --as <correo de un admin>
 El primero solo cuenta lo que crearía y no escribe nada. El segundo lo hace. Repetirlo no duplica:
 la segunda corrida debe decir `creados 0` y salir con 0. Si sale con 1, el resumen dice cuántos
 socios quedaron `ocupados` o `fallidos`: repite el comando (guía en `atleta.md`).
+
+## Volver de v0.6 a v0.5
+
+Primero intenta lo de la sección «Si salió 1 después de levantar». Si hay que volver a v0.5:
+
+1. **Camino seguro, siempre válido:** saca un volcado de la base tal como está y restaura el respaldo
+   pre-deploy (`respaldo-y-restauracion.md`). Si ya se guardaron medidas o récords reales en v0.6, esas
+   filas se pierden: es una decisión irreversible y la toma una persona.
+2. **Camino alterno, solo sin medidas reales:** con la imagen de v0.6 todavía puesta, baja el esquema y
+   luego despliega la etiqueta anterior:
+
+   ```
+   DC="docker compose --env-file .env --env-file .env.ops -f infra/compose.yml"
+   $DC run --rm migrate alembic downgrade 0041_results_session_index
+   bash infra/deploy.sh --ref v0.5.0 --expect-sha <sha de v0.5.0> --kek-file /ruta/kek.age --i-know-unsigned-ref
+   ```
+
+   El `downgrade` borra el esquema `athletes` (medidas y récords). Las llaves de `athlete.metric` se
+   quedan en `crypto_keys` (una llave nunca se borra) y v0.5 arranca con ellas. Compose y `dbsetup` deben
+   correr desde el árbol de v0.5.0, que es lo que hace `deploy.sh --ref v0.5.0`: con el de v0.6, `dbsetup`
+   falla cerrado porque intenta dar permisos sobre las tablas de `athletes` que ya no existen.
+
+Probado el 2026-11-18 en el stack desechable `apex-smoke`: el `downgrade` bajó de `0044` a `0041`,
+`api` y `worker` de v0.5.0 quedaron sanos, `/health` respondió 200 con `crypto ok` y `migrations ok`, y
+el login y el `reveal` del documento de un socio funcionaron.

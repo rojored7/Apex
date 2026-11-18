@@ -17,6 +17,10 @@ import { invalidateAthleteViews, invalidateRecordViews } from "../../shared/data
 import { isStaleRecordError } from "./recordErrors";
 import {
   athleteSummarySchema,
+  benchmarkRowSchema,
+  benchmarkSeriesSchema,
+  type BenchmarkRowView,
+  type BenchmarkSeriesView,
   isRevealValueFor,
   metricRevealSchema,
   metricSchema,
@@ -159,5 +163,53 @@ export function useInvalidateRecord(memberId: string): UseMutationResult<RecordV
     onSuccess: () => {
       invalidateRecordViews(queryClient, memberId);
     },
+  });
+}
+
+/** Tamaño de página de la lista de benchmarks (tope del api) y tope de páginas: más allá la pantalla avisa (como shared/data/catalog.ts). */
+export const BENCHMARKS_PAGE_LIMIT = 200;
+export const BENCHMARKS_MAX_PAGES = 5;
+
+export interface AthleteBenchmarkList {
+  items: BenchmarkRowView[];
+  total: number;
+  /** Hay más benchmarks que los que caben en BENCHMARKS_MAX_PAGES páginas: la lista de chips quedó incompleta. */
+  truncated: boolean;
+}
+
+/** Pide páginas de 200 hasta cubrir `total` o llegar al tope de páginas; sin repetir un benchmark. */
+async function collectBenchmarks(memberId: string, signal: AbortSignal): Promise<AthleteBenchmarkList> {
+  const rows = new Map<string, BenchmarkRowView>();
+  let total = 0;
+  for (let page = 0; page < BENCHMARKS_MAX_PAGES; page += 1) {
+    const offset = page * BENCHMARKS_PAGE_LIMIT;
+    if (page > 0 && offset >= total) break;
+    const query = listParams({ limit: BENCHMARKS_PAGE_LIMIT, offset });
+    const result = parseResponse(pageSchema(benchmarkRowSchema), await api.get<unknown>(`${base(memberId)}/benchmarks`, { query, signal }));
+    total = result.total;
+    for (const row of result.items) rows.set(row.benchmark_id, row);
+  }
+  return { items: [...rows.values()], total, truncated: total > BENCHMARKS_MAX_PAGES * BENCHMARKS_PAGE_LIMIT };
+}
+
+// S9-F3 (US-183): benchmarks del socio. Las claves ["athlete-benchmarks", id, ...] las relee invalidateRecordViews.
+export function useAthleteBenchmarks(memberId: string): UseQueryResult<AthleteBenchmarkList> {
+  return useQuery({
+    queryKey: ["athlete-benchmarks", memberId, "list"],
+    queryFn: ({ signal }) => collectBenchmarks(memberId, signal),
+    enabled: memberId !== "",
+  });
+}
+
+export function useBenchmarkSeries(memberId: string, benchmarkId: string | undefined): UseQueryResult<BenchmarkSeriesView> {
+  return useQuery({
+    queryKey: ["athlete-benchmarks", memberId, "series", benchmarkId ?? ""],
+    queryFn: async ({ signal }) => {
+      const series = parseResponse(benchmarkSeriesSchema, await api.get<unknown>(`${base(memberId)}/benchmarks/${encodeURIComponent(benchmarkId ?? "")}`, { signal }));
+      // La serie que llega tiene que ser la pedida: otra cosa no se muestra (como el reveal de las medidas).
+      if (series.benchmark_id !== benchmarkId) throw invalidResponseError();
+      return series;
+    },
+    enabled: memberId !== "" && benchmarkId !== undefined,
   });
 }

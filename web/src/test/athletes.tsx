@@ -270,3 +270,62 @@ export const benchmarksHandler: MockHandler = (call) => pageReply(call, CATALOG_
 
 /** Los dos catálogos simulados, para pantallas que los piden (el panel de récords). */
 export const CATALOG_HANDLERS: Record<string, MockHandler> = { "GET /movements": movementsHandler, "GET /benchmarks": benchmarksHandler };
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// S9-F3 · US-183: benchmarks del socio (BenchmarkRowOut, BenchmarkSeriesOut y AttemptOut del contrato).
+export type BenchmarkRowFixture = components["schemas"]["BenchmarkRowOut"];
+export type BenchmarkSeriesFixture = components["schemas"]["BenchmarkSeriesOut"];
+export type AttemptFixture = components["schemas"]["AttemptOut"];
+
+export const BENCHMARKS_PATH = `/athletes/${MEMBER_ID}/benchmarks`;
+export const seriesPath = (id: string): string => `${BENCHMARKS_PATH}/${id}`;
+
+/** Un benchmark de la lista del socio: por omisión Fran, 5 intentos, mejor 4:05 RX. */
+export function benchmarkRow(overrides: Partial<BenchmarkRowFixture> = {}): BenchmarkRowFixture {
+  return {
+    benchmark_id: benchmarkId(1),
+    name: "Fran",
+    score_type: "time",
+    attempts: 5,
+    last_on: "2026-11-02",
+    best: { level: "rx", seconds: 245, rounds: null, reps: null, load_g: null, capped: false },
+    ...overrides,
+  };
+}
+
+/** Un intento de la serie (AttemptOut): por omisión un tiempo RX sin cambio de nivel. */
+export function attempt(n: number, overrides: Partial<AttemptFixture> = {}): AttemptFixture {
+  return {
+    result_id: `c2c2c2c2-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    wod_id: `f2f2f2f2-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    wod_date: "2026-10-20",
+    level: "rx",
+    level_changed: false,
+    seconds: null,
+    rounds: null,
+    reps: null,
+    load_g: null,
+    capped: false,
+    is_best: false,
+    source: "desk",
+    ...overrides,
+  };
+}
+
+export function seriesOf(row: Pick<BenchmarkRowFixture, "benchmark_id" | "name" | "score_type">, attempts: readonly AttemptFixture[], truncated = false): BenchmarkSeriesFixture {
+  return { benchmark_id: row.benchmark_id, name: row.name, score_type: row.score_type, attempts: [...attempts], truncated };
+}
+
+/** Fran por tiempo: 8:15 Escalado, 4:40, 4:20, 4:05 (el mejor) y 4:10, los cuatro últimos RX. */
+export const FRAN_ROW = benchmarkRow();
+export const FRAN_ATTEMPTS = [
+  attempt(1, { wod_date: "2026-01-10", level: "scaled", seconds: 495 }),
+  attempt(2, { wod_date: "2026-03-12", level: "rx", level_changed: true, seconds: 280 }),
+  attempt(3, { wod_date: "2026-06-20", seconds: 260 }),
+  attempt(4, { wod_date: "2026-10-20", seconds: 245, is_best: true }),
+  attempt(5, { wod_date: "2026-11-02", seconds: 250, source: "kiosk" }),
+];
+export const FRAN_SERIES = seriesOf(FRAN_ROW, FRAN_ATTEMPTS);
+
+export const HELEN_ROW = benchmarkRow({ benchmark_id: benchmarkId(3), name: "Helen", attempts: 1, last_on: "2026-10-20", best: { level: "rx", seconds: 702, rounds: null, reps: null, load_g: null, capped: false } });
+export const HELEN_SERIES = seriesOf(HELEN_ROW, [attempt(11, { wod_date: "2026-10-20", seconds: 702, is_best: true })]);

@@ -66,12 +66,23 @@ test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
   const socios: SocioCreado[] = [];
   const sesiones: string[] = [];
   test.afterEach(async ({ page }) => {
-    for (const socio of socios.splice(0)) await darDeBajaSocio(page, socio.id);
-    // Las clases no se borran: se cancelan (tolerante: si ya no hay sesión o el api responde otra cosa, la limpieza sigue).
-    const sesionesPorCancelar = sesiones.splice(0);
-    if (sesionesPorCancelar.length === 0) return;
-    const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
-    for (const id of sesionesPorCancelar) await page.request.post(`${API}/class-sessions/${id}/cancel`, { headers, data: { reason: "limpieza E2E" } }).catch(() => undefined);
+    const porCancelar = sesiones.splice(0);
+    const fallos: Error[] = [];
+    try {
+      for (const socio of socios.splice(0)) await darDeBajaSocio(page, socio.id);
+    } catch (error) {
+      // La baja falló: la cancelación de clases se intenta igual y el fallo se relanza al final.
+      fallos.push(error instanceof Error ? error : new Error(String(error)));
+    }
+    // Las clases no se borran: se cancelan. Con resultados no se puede (409 locked_by_results, por diseño): solo eso se tolera; cualquier otra respuesta falla.
+    if (porCancelar.length > 0) {
+      const headers = { Authorization: `Bearer ${await loginComo(page)}`, ...sameOriginHeaders() };
+      for (const id of porCancelar) {
+        const cancelada = await page.request.post(`${API}/class-sessions/${id}/cancel`, { headers, data: { reason: "limpieza E2E" } });
+        if (!cancelada.ok() && cancelada.status() !== 409) fallos.push(new Error(`POST /class-sessions/{id}/cancel respondió ${String(cancelada.status())}.`));
+      }
+    }
+    if (fallos[0]) throw fallos[0];
   });
 
   test("un resultado de 100 kg crea el RM automático y corregirlo lo deja invalidado", async ({ page }) => {

@@ -1,4 +1,4 @@
-// US-068 T5: el catálogo (catalog.html) muestra los 17 componentes en sus estados, cada
+// US-068 T5: el catálogo (catalog.html) muestra los 18 componentes en sus estados, cada
 // StatusTag con texto, y elige tema y vista por la URL.
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,13 +14,22 @@ afterEach(() => {
 });
 
 describe("Catalog", () => {
-  it("tiene una sección con título por cada uno de los 17 componentes", () => {
+  it("tiene una sección con título por cada uno de los 18 componentes", () => {
     render(<CatalogApp search="" />);
 
-    expect(KIT_COMPONENTS).toHaveLength(17);
+    expect(KIT_COMPONENTS).toHaveLength(18);
     for (const name of KIT_COMPONENTS) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
+  });
+
+  it("S9-F3: TrendChart está en el catálogo con su gráfica (imagen con nombre) y su vacío", () => {
+    render(<CatalogApp search="" />);
+    const section = within(screen.getByRole("region", { name: "TrendChart" }));
+
+    expect(KIT_COMPONENTS).toContain("TrendChart");
+    expect(section.getByRole("img")).toBeInTheDocument();
+    expect(section.getByText("Sin datos para graficar.")).toBeInTheDocument();
   });
 
   it("cada StatusTag del catálogo lleva texto además del color", () => {

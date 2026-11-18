@@ -6,7 +6,7 @@
 // S9-F2: RMs por movimiento y Récords con su contenido, y «+ Registrar récord» (panel RecordPanel). DESIGN-GAP: «Exportar progreso».
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
-import { apiError, CATALOG_HANDLERS, CLEAR, derivedRm, MEMBER_ID, METRICS_PATH, metric, metricId, movementId, pageReply, record, RECORDS_PATH, revealPath, rm, RMS_PATH, SUMMARY_PATH, summary } from "../../../test/athletes";
+import { apiError, BENCHMARKS_PATH, benchmarkId, CATALOG_HANDLERS, CLEAR, derivedRm, FRAN_ROW, FRAN_SERIES, MEMBER_ID, METRICS_PATH, metric, metricId, movementId, pageReply, record, RECORDS_PATH, revealPath, rm, RMS_PATH, seriesPath, SUMMARY_PATH, summary } from "../../../test/athletes";
 import { DELETED_TAB_MEMBER, TAB_MEMBER, renderMemberTab } from "../../../test/memberTabs";
 import { setViewportWidth, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
@@ -100,7 +100,7 @@ describe("AthleteTab · subpestañas en ?tab=", () => {
     expect(await screen.findByRole("table", { name: "Medidas corporales del socio" })).toBeInTheDocument();
   });
 
-  it("RMs, Récords y Benchmarks existen como subpestañas del contrato (su contenido llega en F2 y F3)", async () => {
+  it("RMs, Récords y Benchmarks existen como subpestañas del contrato (su contenido llegó en F2 y F3)", async () => {
     renderTab(`${BASE}?tab=rms`);
 
     await screen.findByRole("tablist", { name: "Secciones del atleta" });
@@ -293,10 +293,18 @@ describe("AthleteTab · RMs y Récords (S9-F2)", () => {
     expect(screen.queryByText(COMING_SOON)).not.toBeInTheDocument();
   });
 
-  it("Benchmarks sigue pendiente de F3: conserva el aviso de que llega en la siguiente entrega", async () => {
-    renderTab(`${BASE}?tab=benchmarks`, extra());
+  it("S9-F3: ?tab=benchmarks monta la serie del primer benchmark y ya no dice «llega en la siguiente entrega»", async () => {
+    const { mock } = renderTab(`${BASE}?tab=benchmarks`, {
+      ...extra(),
+      [`GET ${BENCHMARKS_PATH}`]: (call) => pageReply(call, [FRAN_ROW]),
+      [`GET ${seriesPath(benchmarkId(1))}`]: { status: 200, body: FRAN_SERIES },
+    });
 
-    expect(await screen.findByText(COMING_SOON)).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Intentos del socio en Fran" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Benchmark" })).toBeInTheDocument();
+    expect(mock.callsTo(`GET ${BENCHMARKS_PATH}`)).toHaveLength(1);
+    expect(mock.callsTo(SUMMARY)).toHaveLength(0);
+    expect(screen.queryByText(COMING_SOON)).not.toBeInTheDocument();
   });
 
   it.each(["admin", "coach"] as const)("el %s ve «+ Registrar récord» y abre el panel «Registrar récord»", async (role) => {

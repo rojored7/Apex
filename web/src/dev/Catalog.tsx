@@ -1,5 +1,5 @@
 // US-068 T5: catálogo del kit (catalog.html, `npm run build:catalog`; fuera del build de
-// producción y de la imagen de Nginx). Los 16 componentes de DESIGN.md en sus estados (carga,
+// producción y de la imagen de Nginx). Los 18 componentes de DESIGN.md en sus estados (carga,
 // vacío, error, deshabilitado, abierto) y enlaces a los cuatro layouts de muestra. Lo recorren
 // tests/e2e/kit.spec.ts (axe, desborde y capturas en claro y oscuro) y src/dev/Catalog.test.tsx.
 // Parámetros: ?tema=light|dark fija el tema inicial; ?vista=... muestra un layout (LayoutsPreview).
@@ -29,6 +29,7 @@ import { ACCOUNT_LABELS, STATUS_LABELS, type AccountStatusView, type MembershipS
 import { StatusTag } from "../shared/ui/StatusTag";
 import { Segmented } from "../shared/ui/Segmented";
 import { Tabs } from "../shared/ui/Tabs";
+import { TrendChart, type TrendPoint } from "../shared/ui/TrendChart";
 import { TopBar } from "../shared/ui/TopBar";
 import { LayoutsPreview, readPreviewParams } from "./LayoutsPreview";
 import styles from "./preview.module.css";
@@ -51,6 +52,7 @@ export const KIT_COMPONENTS = [
   "Field",
   "MaskedValue",
   "HistoryAside",
+  "TrendChart",
 ] as const;
 
 interface MemberRow {
@@ -73,6 +75,12 @@ const COLUMNS: Column<MemberRow>[] = [
 const HISTORY: AuditEntryView[] = [
   { id: "h1", at: "2026-10-20T19:32:00Z", actor_id: "u1", actor_name: "Ana P.", entity: "members", action: "update", before: { phone: "apx1.k.A256GCM.a.b" }, after: { phone: "apx1.k.A256GCM.c.d" } },
   { id: "h2", at: "2026-10-19T14:05:00Z", actor_id: "u1", actor_name: "Ana P.", entity: "members", action: "insert", before: null, after: { first_name: "Laura" } },
+];
+
+const TREND_POINTS: TrendPoint[] = [
+  { id: "t1", label: "12 mar 2026", value: 280, text: "4:40" },
+  { id: "t2", label: "20 jun 2026", value: 260, text: "4:20" },
+  { id: "t3", label: "20 oct 2026", value: 245, text: "4:05", isBest: true },
 ];
 
 const noop = (): void => undefined;
@@ -193,6 +201,10 @@ function ListSamples() {
           ]}
         />
       </Section>
+      <Section name="TrendChart">
+        <TrendChart title="Fran" points={TREND_POINTS} />
+        <TrendChart title="Helen" points={[]} />
+      </Section>
     </>
   );
 }
@@ -261,6 +273,9 @@ export function Catalog() {
                 {(Object.keys(ACCOUNT_LABELS) as AccountStatusView[]).map((account) => (
                   <StatusTag key={account} account={account} />
                 ))}
+              </div>
+              <div className={styles.row}>
+                <StatusTag mark="best" />
               </div>
             </Section>
             <ListSamples />

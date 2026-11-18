@@ -198,3 +198,86 @@ Rojo medido antes de corregir: 18 pruebas nuevas en rojo (7 archivos); las de 42
 
 - Gate sellante `slice-gate.sh web/athletes` (RmsTab, RecordsTab, RecordPanel): 119 passed, exit 0. No sellantes del Verde (`web/shared`, `web/wods`, `web/results`): exit 0.
 - Checkpoint `2a1c1f0`.
+
+## S9-F3 · Benchmarks
+
+US-183. Subpestaña «Benchmarks» de Atleta con la serie del socio y `TrendChart` compartido. Dueño del Rojo: `frontend-qa-automation`.
+
+### Rojo
+
+**Stubs** (compilan): `features/athletes/components/BenchmarksTab.tsx` y `shared/ui/TrendChart.tsx` devuelven `null` (este último exportado en `shared/ui/index.ts` con `TrendPoint` y `TrendChartProps`); hooks `useAthleteBenchmarks(memberId, {limit, offset})` y `useBenchmarkSeries(memberId, benchmarkId)` en `features/athletes/api.ts` lanzan `Error("S9-F3: no implementado ...")`; tipos `BenchmarkRowView`, `BenchmarkSeriesView`, `AttemptView` en `schemas.ts`. Sin tocar (lo pide la prueba): `AthleteTab.tsx`, `dev/Catalog.tsx` (`KIT_COMPONENTS`), CSS de `TrendChart`.
+
+**Contrato que fijan las pruebas (decisiones del Rojo para el Verde)**
+- Lista: `GET /athletes/{id}/benchmarks?limit=200&offset=0` (el api pagina; la pantalla pide el máximo, avisa «Se muestran los primeros 200 benchmarks.» si `total > 200` y no pinta paginación). Chips en el grupo «Benchmark», `?benchmark=<benchmark_id>`; sin valor o con uno que no está en la lista vale el primero (sin escribir la URL). Claves de consulta `["athlete-benchmarks", id, ...]` (las relee `invalidateRecordViews`).
+- Serie: `GET /athletes/{id}/benchmarks/{benchmark_id}`; tabla «Intentos del socio en <nombre>» con Fecha, Marca, Nivel y Diferencia (orden del api, ascendente). «Mejor» en texto en la marca del `is_best`. Diferencia: «Primera vez» (el primero), «Cambió de nivel» si `level_changed` (sin número), `formatScoreDelta` en los demás, «—» si no se puede (rondas + repeticiones, DNF). Notas: «Solo se compara entre intentos del mismo nivel.» y, con `truncated`, «Se muestran los 200 intentos más recientes.». DESIGN-GAP: columna «Escaló».
+- Vacíos: «Sin intentos en benchmarks» (lista) y «Este socio todavía no tiene intentos validados en <nombre>.» (serie).
+- Errores (textos nuevos): lista 403 «No tienes permiso para ver los benchmarks de este socio.», 404 y 429 con los textos de `RECORD_ERROR_MESSAGES` (`memberGone`, `tooManyReads`), 5xx «No pudimos cargar los benchmarks. Intenta de nuevo en un momento.»; serie 404 `benchmark_not_found` «Este benchmark ya no está en el catálogo. Elige otro.», 403 igual que la lista, 5xx «No pudimos cargar la serie de este benchmark. Intenta de nuevo en un momento.»; los 5xx con Reintentar.
+- `TrendChart({title, points: {id,label,value,text,isBest?}[], emptyMessage?})`: `<svg role="img">` con `aria-label` «<título>: N puntos. <label>: <texto>; ... (mejor)» («1 punto»), un `circle` por punto, el mejor con `data-best="true"` y radio mayor, `polyline` si hay 2 o más, sin puntos `<p>` «Sin datos para graficar.»; `TrendChart.module.css` solo con `var(--…)`. Catálogo de 17 a 18 componentes, con sección «TrendChart» (gráfica y vacío).
+
+**Apoyo de pruebas**: `src/test/athletes.tsx` (`BENCHMARKS_PATH`, `seriesPath`, `benchmarkRow`, `attempt`, `seriesOf`, `FRAN_ROW`, `FRAN_ATTEMPTS`, `FRAN_SERIES`, `HELEN_ROW`, `HELEN_SERIES`).
+
+**E2E** (no ejecutada): `athlete-profile.spec.ts` suma un caso: WOD «Fran» (`benchmark_id` de Fran, por tiempo) en un día libre de 2033, clase de hoy a +10 min (corte 23:49, tolerante a `session_duplicate`), asistencia y `PUT /results` de 245 s; `?tab=benchmarks` muestra chip «Fran» activo, tabla con 4:05 «Mejor» RX y la gráfica «Fran: 1 punto»; limpieza: baja del socio y cancelar la clase (tolerante, con resultados no se puede, S9-D68). Requiere `seed-benchmarks` aplicado.
+
+**Rojo medido** (`npx vitest run --pool=forks --maxWorkers=2`):
+
+| Archivo | failed / passed | Motivo |
+|---|---|---|
+| `features/athletes/components/BenchmarksTab.test.tsx` (nuevo) | 37 / 0 | el stub devuelve `null`: sin chips, tabla ni peticiones |
+| `shared/ui/TrendChart.test.tsx` (nuevo) | 8 / 1 | stub `null`: sin SVG ni mensaje; falta `TrendChart.module.css`. Pasa «el componente no tiene colores literales» (trivial con el stub) |
+| `dev/Catalog.test.tsx` (ampliado) | 2 / 7 | `KIT_COMPONENTS` sigue en 17 y no hay región «TrendChart» |
+| `features/athletes/tabs/AthleteTab.test.tsx` (caso cambiado) | 1 / resto verde | la subpestaña Benchmarks aún muestra «llega en la siguiente entrega» |
+
+Total 48 en rojo, 0 por importación ni sintaxis. Suite completa: 276 archivos, 4 953 pruebas, 4 905 pasan; los únicos 48 que fallan son los de arriba.
+**Comprobaciones**: `npx tsc --noEmit` exit 0; `npm run lint` exit 0; `tests/unit/e2e-stack-guard.test.ts` en verde.
+
+### Verde
+
+**Archivos**: `shared/ui/TrendChart.tsx` y `.module.css` (SVG, `role="img"`, mejor punto con radio mayor y `data-best`, `polyline` desde 2 puntos, solo `var(--…)`); `features/athletes/components/BenchmarksTab.tsx` y `.module.css`; `api.ts` (`useAthleteBenchmarks` pide páginas de 200 hasta 5 como `shared/data/catalog.ts`, sin repetir benchmarks; `useBenchmarkSeries`; claves `["athlete-benchmarks", id, "list"|"series", ...]`); `schemas.ts` (esquemas Zod de fila, intento y serie); `recordErrors.ts` (`benchmarksListError`, `benchmarkSeriesError`: 404 `member_not_found` distinto de `benchmark_not_found`); `AthleteTab.tsx` (Benchmarks pinta `BenchmarksTab`; se quitó `COMING_SOON` y su CSS `.soon`); `dev/Catalog.tsx` (18 componentes, sección TrendChart); `docs/design/DESIGN.md` (entrada TrendChart).
+
+**Decisiones**: la tabla va del más reciente al más antiguo (como el HTML del diseño), la gráfica en orden cronológico y la «Diferencia» contra el intento anterior en el tiempo (se ordena por `wod_date` antes de calcular). Mientras carga la serie, la tabla de esqueleto se llama «Cargando los intentos del socio en X» para que nunca se confunda con la tabla con datos. Sin `placeholderData`: al cambiar de chip no se mezclan series. Solo lectura (no hay acciones, vale igual con socio nulo o de baja). Los errores usan textos fijos. La gráfica omite intentos sin marca graficable; rondas + repeticiones se dibuja como rondas×1000 + reps.
+
+**Errores de pruebas corregidos (con motivo)**
+- `BenchmarksTab.test.tsx` «lista los cinco intentos…»: fijaba orden ascendente en la tabla; decisión del orquestador (el diseño manda): ahora descendente.
+- «más de 200 benchmarks»: por la coherencia con F2 (M2) se piden más páginas hasta 1.000; el aviso pasa a «Se muestran los primeros 1.000 benchmarks.» con total 1230. Prueba nueva: con 230 se pide `offset=200` y no hay aviso.
+
+**DESIGN-GAP** (comentados en código): columna «Escaló» y «solo se compara entre el mismo nivel» (va como nota); selector `<select>` del diseño frente a chips del plan.
+
+**Resultado** (desde `web/`): suite completa `npx vitest run --pool=forks --maxWorkers=2`: 276 archivos, 4 955 pruebas, 0 en rojo (antes del Verde 48 en rojo; +2 pruebas netas por la segunda página y el tope de la lista); `npm run lint` exit 0; `npx tsc --noEmit` exit 0; `npm run build` exit 0; `tests/unit/e2e-stack-guard.test.ts` 16 verdes. Sin correr: gate sellante `web/athletes`, checkpoint, Docker y Playwright.
+
+### Revisiones
+
+Rojo medido antes de corregir (`npx vitest run` de `features/athletes`, `shared/ui` y `dev`): 25 en rojo en 4 archivos. Pasaron de inmediato, y se dejan como caracterización, las de misma fecha, orden no ascendente, empate, `rx_plus`, `score_type` desconocido, 429, 404 `member_not_found`, la comparación del cambio de socio y las de sentido «mayor es mejor» por omisión. Una prueba mía del sentido vertical estaba al revés (índices) y se corrigió antes del Verde.
+
+| Hallazgo | Rojo medido | Arreglo |
+|---|---|---|
+| M1 «Primera vez» con serie truncada | 1 prueba | `deltaText`/`chronology` reciben `truncated`; el más antiguo mostrado dice «—» |
+| M2 sentido vertical | 2 pruebas (con `lowerIsBetter` y comentario falso) | `TrendChart` acepta `lowerIsBetter` y calcula mínimo y máximo con `reduce`; `BenchmarksTab` lo pasa para `time` (el mejor punto queda arriba en tiempo y en carga) |
+| M3 etiquetas y radio | 2 pruebas (sin `svg text`, `vector-effect`) | las fechas de los extremos van en HTML bajo el SVG (`.ticks`); `vector-effect: non-scaling-stroke` en eje, línea y puntos; viewBox 360x140 para que el radio se lea en 320 y 375 px |
+| M4 `aria-label` largo | 1 prueba | más de 12 puntos: cantidad, primero, último y mejor |
+| M5 negación y cabecera de la prueba | n/a | `/Se muestran los primeros/`; cabecera con 1.000 y orden descendente |
+| L6 valores no finitos | 2 pruebas (NaN, Infinity, 1 y 1e12; todo inválido) | `Number.isFinite` antes de dibujar; sin `Math.min(...)`. No hay prueba de 150 000 puntos: pintarlos en jsdom cuesta más que lo que prueba; el `reduce` no depende del tamaño de la pila |
+| L7 decisión del orquestador | 4 pruebas | la gráfica omite `capped` y grafica solo el nivel del intento más reciente, con la leyenda «Gráfica de intentos en {nivel}»; la prueba que esperaba 5 puntos pasó a 4 |
+| L8 `level_changed \|\|` | n/a | quitado; la comparación es la local entre niveles |
+| L9 reps de rondas + reps | 1 prueba (5 rondas + 5000 reps) | `Math.min(reps, 999)` con comentario |
+| L10 gráfica y notas con error | 1 prueba (relectura fallida con datos viejos) | si `series.error` solo se pinta el aviso |
+| L11 error tipado | 1 prueba (`role=alert` sin tabla) | `ErrorNotice` propio con `ApiError`, ya no se usa `DataTable` para el error |
+| L12 píldora «Mejor» | 2 pruebas (BenchmarksTab y StatusTag) | `StatusTag mark="best"` (`data-mark`), entrada en `dev/Catalog.tsx` y `DESIGN.md` |
+| L13 pruebas que faltaban | 20 en `BenchmarksTab.test.tsx` | misma fecha, orden no ascendente, empate «Sin cambio», `rx_plus`, `score_type` desconocido, 429, 404 `member_not_found`, rondas×1000 y omisión sin marca, cambio de `memberId` |
+| L14 pruebas de `TrendChart` | 9 | sentido vertical, reparto horizontal, etiquetas, un punto, valores extremos |
+| L15 E2E | n/a (no se corre) | `getByRole("button", { name: "Fran", exact: true })`; afirma «Primera vez»; la cancelación solo tolera 2xx o 409 |
+| S1 tope de intentos | 1 prueba | `attempts` con `.max(200)` (`SERIES_MAX_ATTEMPTS`) |
+| S2 serie de otro benchmark | 1 prueba | `queryFn` lanza `invalidResponseError` si `benchmark_id` no es el pedido |
+| S3 marcas negativas | 4 pruebas | `.nonnegative()` en segundos, rondas, repeticiones y carga |
+| S4 limpieza E2E | n/a | `afterEach` de las dos specs: la baja del socio y la cancelación de clases se intentan siempre; el primer fallo se relanza al final |
+
+**Conservado**: el movimiento que el orquestador puso en el WOD de Fran de la spec.
+**Datos que quedan en desarrollo (ficticios)**: un WOD de 2033 por corrida de `athlete-profile.spec.ts` (no hay borrado de WODs por diseño) y la clase con resultado (no se cancela, 409).
+**No corregido**: nada.
+
+**Verificación de las revisiones** (desde `web/`): suite completa 277 archivos, 4 994 pruebas, 0 en rojo; `npm run lint`, `npx tsc --noEmit` y `npm run build` exit 0; guardián `e2e-stack-guard` 16 verdes (ver abajo); gate no sellante `web/shared src/shared/ui/TrendChart.test.tsx` exit 0. Sin correr: gate sellante `web/athletes`, checkpoint, Docker y Playwright.
+
+### E2E (orquestador)
+
+**Rojo E2E (orquestador, P-E2E, imagen web con F2 sin F3):** primer intento, el caso nuevo falló en `POST /wods` (311 ms): la spec mandaba `movements: []` y el api exige de 1 a 30 movimientos (`validate_wod`). No es un rojo válido. Arreglo del orquestador en la spec: un movimiento activo cualquiera, sin carga, `21-15-9`. Segundo intento: 1 failed, exit 1. No existe el chip «Fran» de la subpestaña Benchmarks (motivo correcto); los datos ya se crean bien. Los dos casos de F1 siguen pasando (2 passed en el primer intento). `.env` restaurado.
+**Verde E2E:** P-REBUILD 3 desde el worktree (build exit 0). P-E2E de `athlete-profile.spec.ts` (3 casos, con el de Benchmarks) y `athlete-records.spec.ts` (2 casos): corrida 1, 5 passed (11,7 s); corrida 2, 5 passed (12,0 s); exit 0. `.env` restaurado.
+**E2E tras las revisiones** (P-REBUILD 3 desde el worktree, build exit 0): `athlete-profile.spec.ts` y `athlete-records.spec.ts`, 5 passed (9,8 s); `kiosk-idle.spec.ts` 2 skipped (su corte de las 23:19 de Bogotá; corrió a las 23:43). La segunda corrida va después de medianoche, en el bloque de evidencia.

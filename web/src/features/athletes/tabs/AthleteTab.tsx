@@ -2,7 +2,7 @@
 // /socios/:id (S3-D65, E3): la ficha la pinta en su <Outlet /> y le pasa el socio por el contexto (useMemberTab, shared/data); esta
 // feature no importa features/members y la ficha la carga de forma diferida (lazy en la tabla de rutas).
 // - Cinco subpestañas en píldoras con `?tab=`: Resumen (por defecto), Medidas corporales, RMs por movimiento, Récords y Benchmarks.
-//   RMs y Récords son de S9-F2; Benchmarks llega en S9-F3 y por ahora solo existe como subpestaña.
+//   RMs y Récords son de S9-F2; Benchmarks (serie del socio con TrendChart) es de S9-F3.
 // - S9-F2: «+ Registrar récord» (athletes.write, socio vivo) abre RecordPanel; un récord no es dato de salud: no exige la autorización de datos.
 // - «+ Registrar medidas» (athletes.write) abre el panel; con el socio dado de baja no hay acciones (la ficha es de solo lectura, N-20).
 // - H-1: si la ficha trae `data_consent_at: null`, el botón del panel nace deshabilitado con el enlace a la ficha.
@@ -15,6 +15,7 @@ import { useCan } from "../../../core/auth/useCan";
 import { useMemberTab, type MemberTabMember } from "../../../shared/data/members";
 import { Button } from "../../../shared/ui/Button";
 import { Tabs, type TabItem } from "../../../shared/ui/Tabs";
+import { BenchmarksTab } from "../components/BenchmarksTab";
 import { MetricPanel } from "../components/MetricPanel";
 import { MetricsTab } from "../components/MetricsTab";
 import { RecordPanel } from "../components/RecordPanel";
@@ -31,12 +32,11 @@ export const ATHLETE_SUBTABS: readonly TabItem[] = [
   { id: "benchmarks", label: "Benchmarks" },
 ];
 
-// Filtros propios de cada subpestaña: no pasan a la siguiente (`benchmark` es de S9-F3).
+// Filtros propios de cada subpestaña: no pasan a la siguiente (`benchmark` es de Benchmarks).
 const SUBTAB_PARAMS = ["kind", "invalidated", "benchmark"] as const;
 
 export const SAVED_NOTICE = "Medidas guardadas.";
 export const RECORD_SAVED_NOTICE = "Récord guardado.";
-export const COMING_SOON = "Esta sección llega en la siguiente entrega del perfil del atleta.";
 
 interface SubtabProps {
   active: string;
@@ -49,7 +49,7 @@ function Subtab({ active, memberId, memberDeleted }: SubtabProps) {
   if (active === "resumen") return <SummaryCards memberId={memberId} />;
   if (active === "rms") return <RmsTab memberId={memberId} />;
   if (active === "records") return <RecordsTab memberId={memberId} memberDeleted={memberDeleted} />;
-  return <p className={styles.soon}>{COMING_SOON}</p>;
+  return <BenchmarksTab memberId={memberId} />;
 }
 
 function AthleteTabContent({ memberId, member }: { memberId: string; member: MemberTabMember | null }) {

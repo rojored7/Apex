@@ -3620,3 +3620,19 @@ Confirmación de S9-D41 (enmienda 5 de la crítica 2): el usuario ordenó el 202
 - La spec `athlete-records` cubre también el récord manual con su invalidación.
 
 La spec cancela su clase cuando puede: una clase con resultados no se cancela (409 `locked_by_results`, por diseño) y queda «programada» hasta terminar. Por eso la spec busca el primer minuto libre ante 409 `session_duplicate`.
+
+**S9-D69 · S9-F3: gráfica de benchmarks y revisiones (TypeScript: 0 CRITICAL, 0 HIGH, 5 MEDIUM, 9 LOW; seguridad: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 4 LOW).**
+- **Orden.** La tabla de intentos va del más reciente al más antiguo, como el diseño (el api los da en orden ascendente). La gráfica va en orden cronológico. La «Diferencia» se calcula siempre contra el intento anterior en el tiempo.
+- **Qué grafica.** Omite los intentos `capped` (DNF), que la tabla sigue mostrando. Solo grafica los intentos del mismo nivel que el más reciente, con la leyenda «Gráfica de intentos en {nivel}», coherente con «solo se compara entre el mismo nivel». `TrendChart` es genérico, con `lowerIsBetter`: el mejor punto queda arriba también en tiempo.
+- **Correcciones con prueba.**
+  - «—» en el intento más antiguo de una serie truncada.
+  - Etiquetas de fecha en HTML y trazo sin escalar.
+  - `aria-label` resumido con más de 12 puntos.
+  - Valores no finitos descartados.
+  - Mínimo y máximo con `reduce`.
+  - Rondas+reps con reps topadas en 999.
+  - Sin gráfica ni notas si la serie falla.
+  - «Mejor» con `StatusTag`.
+  - Contrato estricto: tope de 200 intentos, marcas no negativas, y `invalid_response` si la serie no es la pedida.
+- **Specs E2E.** Las de atleta usan `exact: true`, afirman «Primera vez» y siempre intentan la baja del socio y la cancelación de clases (solo toleran 2xx o 409).
+- **Datos que se acumulan en desarrollo.** Los WODs de 2033 de las specs se acumulan, porque no hay borrado de WODs por diseño. `diaLibreDeWod` busca días libres; una base de desarrollo muy usada se limpia restaurando un respaldo, nunca con borrado físico.

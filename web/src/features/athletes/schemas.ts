@@ -319,3 +319,46 @@ export function parseRecordForm(values: RecordFormValues): RecordCreate {
       return { ...base, load_g: validated(recordLoadToGrams(values.load), "la carga") };
   }
 }
+
+// S9-F3 (US-183): la lista de benchmarks con intentos y la serie de uno (BenchmarkRowOut, BenchmarkSeriesOut y AttemptOut), validadas con Zod.
+const scoreSchema = z.object({
+  level: z.enum(RECORD_LEVELS),
+  seconds: z.number().int().nonnegative().nullable(),
+  rounds: z.number().int().nonnegative().nullable(),
+  reps: z.number().int().nonnegative().nullable(),
+  load_g: z.number().int().nonnegative().nullable(),
+  capped: z.boolean(),
+});
+
+/** Tope de intentos de una serie (BenchmarkSeriesOut: los 200 más recientes). */
+export const SERIES_MAX_ATTEMPTS = 200;
+
+export const benchmarkRowSchema = z.object({
+  benchmark_id: z.string().min(1),
+  name: z.string(),
+  score_type: z.string(),
+  attempts: z.number().int().nonnegative(),
+  last_on: z.string().min(1),
+  best: scoreSchema,
+});
+
+export const attemptSchema = scoreSchema.extend({
+  result_id: z.string().min(1),
+  wod_id: z.string().min(1),
+  wod_date: z.string().min(1),
+  level_changed: z.boolean(),
+  is_best: z.boolean(),
+  source: z.enum(["desk", "kiosk"]),
+});
+
+export const benchmarkSeriesSchema = z.object({
+  benchmark_id: z.string().min(1),
+  name: z.string(),
+  score_type: z.string(),
+  attempts: z.array(attemptSchema).max(SERIES_MAX_ATTEMPTS),
+  truncated: z.boolean(),
+});
+
+export type BenchmarkRowView = z.infer<typeof benchmarkRowSchema>;
+export type BenchmarkSeriesView = z.infer<typeof benchmarkSeriesSchema>;
+export type AttemptView = z.infer<typeof attemptSchema>;

@@ -135,3 +135,11 @@ describe("StatusTag · firma", () => {
     expect(screen.getByText(label)).toHaveAttribute("data-signature", signature);
   });
 });
+
+describe("StatusTag con mark (S9-F3)", () => {
+  it("mark=best dice «Mejor» con texto y data-mark", () => {
+    render(<StatusTag mark="best" />);
+
+    expect(screen.getByText("Mejor")).toHaveAttribute("data-mark", "best");
+  });
+});

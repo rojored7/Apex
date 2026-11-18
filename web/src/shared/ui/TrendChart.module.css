@@ -1,0 +1,58 @@
+/* S9-F3: TrendChart. Solo variables de tokens.css (claro y oscuro salen de los tokens). */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+}
+
+.axis {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.line {
+  fill: none;
+  stroke: var(--blue-deep);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dot {
+  fill: var(--card);
+  stroke: var(--blue-deep);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* El mejor punto: más grande y relleno (forma y tamaño, no solo color). */
+.best {
+  fill: var(--blue-deep);
+  stroke: var(--ink);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Las fechas de los extremos van en HTML: no se deforman al escalar el SVG. */
+.ticks {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}

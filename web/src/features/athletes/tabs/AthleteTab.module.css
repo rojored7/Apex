@@ -13,12 +13,6 @@
   gap: var(--space-3);
 }
 
-.soon {
-  margin: 0;
-  color: var(--muted);
-  font: var(--text-body);
-}
-
 /* El aviso de guardado es informativo: borde azul, como los de la ficha. */
 .saved {
   margin: 0;

@@ -83,7 +83,7 @@ Los nombres de clase de los HTML (`w-btn`, `w-tag`, `w-tbl`…) son solo de refe
 - **SideNav**: grupos (Inicio · Hoy · Gestión · Entrenamiento · Avisos · Sistema). Sistema solo para admin. Ítem activo: fondo negro, texto blanco.
 - **PageHeader**: título en Michroma + total a la derecha del título + acciones a la derecha. Breadcrumb encima cuando es una ficha o un formulario.
 - **Button**: `primary` (azul, texto negro), `secondary` (borde negro), `danger` (borde y texto rojo), tamaño `gym` (56 px, 18 px). Siempre `<button>` o `<a>`.
-- **StatusTag**: píldora con los estados de arriba.
+- **StatusTag**: píldora con los estados de arriba. S9-F3: `mark="best"` es la píldora «Mejor» del intento más alto de una serie (relleno de marca y texto).
 - **FilterBar**: buscador (flex 2) + selects (flex 1) + ordenar. En celular se apila; en el portal se pliega en "Filtros ▾".
 - **DataTable**: dentro de una caja con `overflow-x: auto`; cabecera en mayúsculas `--muted`; primera columna siempre enlace a la ficha; sin botones de editar o borrar en las filas. En celular se convierte en lista de tarjetas (ver `Socios_Movil.html`).
 - **Pagination**: tamaño de página (25/50/100), "1–25 de 342", anterior/siguiente.
@@ -95,6 +95,7 @@ Los nombres de clase de los HTML (`w-btn`, `w-tag`, `w-tbl`…) son solo de refe
 - **Field**: label arriba, control de 44 px, error debajo en `--danger`; si es un duplicado, el error enlaza al registro existente.
 - **MaskedValue**: valor enmascarado (`CC •••• 4417`) + enlace Mostrar.
 - **HistoryAside**: historial reciente del registro, a la derecha en escritorio, al final en celular.
+- **TrendChart** (S9-F3): gráfica de línea en SVG para una serie corta (intentos de un benchmark). `role="img"` con `aria-label` que dice cada punto con su texto; el mejor punto va más grande y relleno (forma, no solo color) y se nombra «(mejor)». Solo tokens (`--blue-deep`, `--line`, `--muted`, `--ink`, `--card`). Sin puntos muestra «Sin datos para graficar.». Siempre va junto a una tabla con los mismos datos, que es su equivalente accesible.
 
 ## Las pantallas de gimnasio
 

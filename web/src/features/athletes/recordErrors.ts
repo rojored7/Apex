@@ -3,6 +3,7 @@
 // - recordFieldError: el 422 con `field` va bajo su campo del formulario «Registrar récord».
 // - recordSaveError: POST .../records (403, 404, 409 record_duplicate, 429, 5xx).
 // - invalidateRecordError: POST .../invalidate (403 del coach, 404, 409 record_is_derived y record_already_invalidated, 429, 5xx).
+// - S9-F3: benchmarksListError y benchmarkSeriesError (403, 404, 429, 5xx) de la subpestaña Benchmarks.
 // - isStaleRecordError: el error dice que la lista que se ve quedó vieja (hay que releerla).
 import type { FieldPath } from "react-hook-form";
 import { API_ERROR_CODES } from "../../core/api/errorCodes";
@@ -31,6 +32,9 @@ export const RECORD_ERROR_MESSAGES = {
   invalidateFailed: "No pudimos invalidar el récord. Intenta de nuevo en un momento.",
   movementsFailed: "No pudimos cargar los movimientos. Intenta de nuevo en un momento.",
   benchmarksFailed: "No pudimos cargar los benchmarks. Intenta de nuevo en un momento.",
+  benchmarksForbidden: "No tienes permiso para ver los benchmarks de este socio.",
+  seriesFailed: "No pudimos cargar la serie de este benchmark. Intenta de nuevo en un momento.",
+  benchmarkGone: "Este benchmark ya no está en el catálogo. Elige otro.",
   noKgMovements: "No hay movimientos activos que se midan en kg. Créalos en Movimientos.",
 } as const;
 
@@ -42,6 +46,20 @@ export function rmsListError(error: unknown): ApiError | null {
 
 export function recordsListError(error: unknown): ApiError | null {
   return toScreenError(error, (e) => statusMessage(e, { notFound: M.memberGone, forbidden: M.recordsForbidden, tooMany: M.tooManyReads, generic: M.recordsFailed }), M.recordsFailed);
+}
+
+export function benchmarksListError(error: unknown): ApiError | null {
+  return toScreenError(error, (e) => statusMessage(e, { notFound: M.memberGone, forbidden: M.benchmarksForbidden, tooMany: M.tooManyReads, generic: M.benchmarksFailed }), M.benchmarksFailed);
+}
+
+function seriesText(error: ApiError): string {
+  // 404 de la serie: el benchmark (benchmark_not_found) o el socio (member_not_found) ya no existen.
+  if (error.status === HTTP_NOT_FOUND) return error.code === API_ERROR_CODES.memberNotFound ? M.memberGone : M.benchmarkGone;
+  return statusMessage(error, { forbidden: M.benchmarksForbidden, tooMany: M.tooManyReads, generic: M.seriesFailed });
+}
+
+export function benchmarkSeriesError(error: unknown): ApiError | null {
+  return toScreenError(error, seriesText, M.seriesFailed);
 }
 
 const CHECK_MARK = "Revisa la marca: el servidor no la aceptó. Corrígela y vuelve a guardar.";

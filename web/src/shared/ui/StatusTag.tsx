@@ -29,13 +29,14 @@ import { cx } from "./cx";
  * pago (`payment`); nunca más de uno.
  */
 export type StatusTagProps =
-  | { status: MembershipStatusView; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never; flag?: never }
-  | { account: AccountStatusView; status?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never; flag?: never }
-  | { payment: PaymentStatusView; status?: never; account?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never; flag?: never }
-  | { signature: SignatureStateView; status?: never; account?: never; payment?: never; crypto?: never; className?: string | undefined; slot?: never; flag?: never }
-  | { crypto: CryptoStatusView; status?: never; account?: never; payment?: never; signature?: never; className?: string | undefined; slot?: never; flag?: never }
-  | { slot: SlotStateView; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; flag?: never }
-  | { flag: FlagView; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never };
+  | { status: MembershipStatusView; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; mark?: never; slot?: never; flag?: never }
+  | { account: AccountStatusView; status?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; mark?: never; slot?: never; flag?: never }
+  | { payment: PaymentStatusView; status?: never; account?: never; signature?: never; crypto?: never; className?: string | undefined; mark?: never; slot?: never; flag?: never }
+  | { signature: SignatureStateView; status?: never; account?: never; payment?: never; crypto?: never; className?: string | undefined; mark?: never; slot?: never; flag?: never }
+  | { crypto: CryptoStatusView; status?: never; account?: never; payment?: never; signature?: never; className?: string | undefined; mark?: never; slot?: never; flag?: never }
+  | { slot: SlotStateView; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; mark?: never; flag?: never }
+  | { flag: FlagView; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; mark?: never; slot?: never }
+  | { mark: "best"; status?: never; account?: never; payment?: never; signature?: never; crypto?: never; className?: string | undefined; slot?: never; flag?: never };
 
 /** Píldora de estado: el texto siempre visible lleva el significado, el color lo refuerza. */
 export function StatusTag(props: StatusTagProps) {
@@ -84,6 +85,14 @@ export function StatusTag(props: StatusTagProps) {
     return (
       <span className={cx(styles.tag, styles[signatureTone(signature)], className)} data-signature={signature}>
         {signatureLabel(signature)}
+      </span>
+    );
+  }
+  if (props.mark !== undefined) {
+    // S9-F3: la marca «Mejor» de una serie (texto + relleno de marca, nunca solo color).
+    return (
+      <span className={cx(styles.tag, styles.ok, props.className)} data-mark={props.mark}>
+        Mejor
       </span>
     );
   }

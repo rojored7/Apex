@@ -39,3 +39,5 @@ export { CustodyNotice } from "./CustodyNotice";
 export type { CustodyNoticeProps } from "./CustodyNotice";
 export { Segmented } from "./Segmented";
 export type { SegmentedOption, SegmentedProps } from "./Segmented";
+export { TrendChart } from "./TrendChart";
+export type { TrendChartProps, TrendPoint } from "./TrendChart";

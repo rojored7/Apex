@@ -912,3 +912,12 @@ Hallazgo -> arreglo:
 Verde: `tests/migrations` + `tests/core/test_migrations.py` 1460 passed (exit 0); gate `core/ratelimit` verde; gates `notifications` (1494 passed) y `crypto` (1782 passed, 63 skipped) con solo un fallo de arquitectura (`test_los_privados_de_notifications_son_los_de_b7`, esperaba el conjunto viejo), corregido.
 
 Gates sellantes: `cli` (con `tests/cli/test_derive_records.py`) exit 0. `athletes` (1648 pruebas + arquitectura): primera corrida 1 failed, 1647 passed por `test_router_void_metric` (esperaba `voided_at == reloj`; ahora es la hora de la base), corregida; el gate final se repite sobre ese árbol.
+
+## S9-V1 · gates completos (2026-11-18)
+
+- `run-gates.sh v1` en el worktree `gates` sobre `39a4ef3`: «run-gates: todos los gates en verde (wave v1)».
+- api: 12327 passed, 103 skipped, 47 deselected (perf) en 1:34:54; cobertura TOTAL 96 %.
+- web: 278 archivos, 5019 pruebas en verde; cobertura 95,98 % de líneas; build en 3,80 s.
+- El envoltorio de la corrida lo detuvo el sistema por poca memoria, pero `run-gates.sh` siguió vivo y terminó solo (se esperó su última línea).
+- Después de `39a4ef3` entraron `8c8ee8a` (auditorías: opentelemetry-api 1.45.2, gitleaks, fin de archivo) y `a03840f` (scripts de V3, sin correr aún).
+- Pendiente de V1: ciclo de Alembic `0001 -> 0044` arriba y abajo en `db_test`.

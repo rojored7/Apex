@@ -104,3 +104,9 @@ Rojo medido de la tanda (antes de corregir): 9 pruebas nuevas fallaban en el fro
 - `darDeBajaSocio` más estricto: ninguna de las 10 specs que lo usan da de baja al socio antes de su limpieza (un `DELETE` repetido daría 409 `member_already_deactivated`).
 - `src/features/system/api.test.tsx` falló una vez en una corrida completa con carga; solo pasa 3 de 3 y el slice no toca `features/system`. Se vigila en P-GATES.
 - L6 aceptado: S9-D67.
+
+### Sello y evidencia
+
+- Gate sellante `slice-gate.sh web/athletes` (5 archivos): 137 passed, exit 0. No sellantes del Verde (`web/shared`, `web/members`, `web/app`): exit 0.
+- E2E final tras las revisiones: P-REBUILD 3 desde el worktree (build exit 0) y P-E2E de `athlete-profile.spec.ts`: corrida 1, 2 passed (3,1 s); corrida 2, 2 passed (3,6 s); `.env` restaurado.
+- Checkpoint `3474ab4`.

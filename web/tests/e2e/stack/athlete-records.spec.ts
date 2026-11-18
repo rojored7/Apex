@@ -132,7 +132,7 @@ test.describe("RMs y Récords de la pestaña Atleta contra el stack", () => {
     await expect(filaRecord).toContainText("100 kg");
     await expect(filaRecord.getByText("Vigente")).toBeVisible();
     await expect(filaRecord.getByRole("link", { name: `Ver el WOD de ${movimiento.name} 1RM` })).toHaveAttribute("href", `/wods/${wodId}`);
-    await expect(filaRecord).toContainText("Se corrige corrigiendo el resultado que lo originó.");
+    await expect(filaRecord).toContainText("Para cambiarlo, corrige el resultado que lo originó.");
     await expect(filaRecord.getByRole("button", { name: /^Invalidar / })).toHaveCount(0);
     expect(await axeViolations(page)).toEqual([]);
 

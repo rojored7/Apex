@@ -232,3 +232,29 @@ describe("TrendChart · muchos puntos y valores raros (M4, L6)", () => {
   });
 
 });
+
+describe("TrendChart · eje y caja (arreglo visual de la Wave 5b)", () => {
+  it("con un solo punto no hay ni eje ni línea suelta", () => {
+    const { container } = render(<TrendChart title="Helen" points={[{ id: "h", label: "20 oct 2026", value: 702, text: "11:42", isBest: true }]} />);
+
+    expect(container.querySelector("svg line")).toBeNull();
+    expect(container.querySelector("svg polyline")).toBeNull();
+  });
+
+  it("con dos o más puntos el eje cubre de la primera a la última posición de punto", () => {
+    const { container } = render(<TrendChart title="Fran" points={POINTS} />);
+
+    const axis = container.querySelector("svg line");
+    const xs = [...container.querySelectorAll("svg circle")].map((c) => Number(c.getAttribute("cx")));
+    expect(Number(axis?.getAttribute("x1"))).toBe(Math.min(...xs));
+    expect(Number(axis?.getAttribute("x2"))).toBe(Math.max(...xs));
+  });
+
+  it("la caja no fija un alto máximo que deje el eje corto: el ancho tope va en el contenedor", () => {
+    const name = "./TrendChart.module.css";
+    const css = readFileSync(fileURLToPath(new URL(name, import.meta.url)), "utf8");
+
+    expect(css).not.toMatch(/max-height/);
+    expect(css).toMatch(/max-width:\s*\d+px/);
+  });
+});

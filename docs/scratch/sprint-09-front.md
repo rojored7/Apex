@@ -294,3 +294,11 @@ El hallazgo visual se corrigió en S9-F2 (`MetricsTab`: celdas con la misma fran
 - Gate sellante `slice-gate.sh web/athletes src/features/athletes/components/BenchmarksTab.test.tsx`: 58 passed, exit 0. No sellante `web/shared` (TrendChart): exit 0.
 - Checkpoint `dc06f8c`.
 - Segunda corrida E2E después de medianoche (imagen con F3 y sus revisiones): `athlete-profile`, `athlete-records` y `kiosk-idle`, 7 passed (9,0 s), exit 0; `.env` restaurado.
+
+## Arreglos visuales del cierre de la Wave 5b
+
+| Hallazgo (LOW) | Arreglo | Prueba |
+|---|---|---|
+| Medidas: los «—» de Altura, % grasa y Notas quedaban más arriba que «•••» y «Mostrar» | `MetricField.module.css` `.empty` y `MetricsTab.module.css` `.notes`: flex, `align-items: center`, `min-height: var(--control)`, la misma franja que el resto de celdas | sin prueba (jsdom no calcula layout); queda para la preview del orquestador |
+| TrendChart con un punto: caja grande con una línea corta y suelta abajo (el `max-height` de 200 px dejaba el SVG angosto dentro de un contenedor ancho y el eje parecía corto) | sin `max-height`; el contenedor `.wrap` topa en `max-width: 560px`; alto del viewBox 140 a 120; el eje solo existe con 2 o más puntos y cubre de la primera a la última posición de punto | `TrendChart.test.tsx`: con un punto no hay `line` ni `polyline` (rojo antes); con 2 o más el eje va de `min(cx)` a `max(cx)`; el CSS no tiene `max-height` y sí `max-width` (rojo antes) |
+| Récords: «Se corrige corrigiendo el resultado que lo originó.» redundante | «Para cambiarlo, corrige el resultado que lo originó.» en `RecordsTab.tsx`; corrección de pruebas por decisión del orquestador: `RecordsTab.test.tsx` (afirmación y negación) y la spec E2E `athlete-records.spec.ts` | `RecordsTab.test.tsx` (rojo antes con el texto nuevo) |

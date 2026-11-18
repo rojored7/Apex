@@ -1,5 +1,9 @@
 /* S9-F3: TrendChart. Solo variables de tokens.css (claro y oscuro salen de los tokens). */
+
+/* Ancho tope: el SVG escala sin sobrar altura ni dejar el eje corto dentro de una caja grande. */
 .wrap {
+  width: 100%;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -9,7 +13,6 @@
   display: block;
   width: 100%;
   height: auto;
-  max-height: 200px;
 }
 
 .axis {

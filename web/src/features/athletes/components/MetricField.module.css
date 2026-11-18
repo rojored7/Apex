@@ -14,7 +14,11 @@
   overflow-wrap: anywhere;
 }
 
+/* El «—» de un campo sin dato ocupa la misma franja que el botón «Mostrar» y se centra en ella (igual que las demás celdas de la fila). */
 .empty {
+  display: flex;
+  align-items: center;
+  min-height: var(--control);
   color: var(--muted);
 }
 

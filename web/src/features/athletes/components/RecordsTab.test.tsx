@@ -138,7 +138,7 @@ describe("RecordsTab · derivados y manuales (S9-D13)", () => {
 
     const squat = rowOf("Back Squat 1RM");
     expect(within(squat).getByRole("link", { name: "Ver el WOD de Back Squat 1RM" })).toHaveAttribute("href", `/wods/${WOD_ID}`);
-    expect(squat).toHaveTextContent("Se corrige corrigiendo el resultado que lo originó.");
+    expect(squat).toHaveTextContent("Para cambiarlo, corrige el resultado que lo originó.");
     const helen = rowOf("Helen (benchmark)");
     expect(within(helen).getByRole("link", { name: "Ver el WOD de Helen (benchmark)" })).toHaveAttribute("href", `/wods/${OTHER_WOD_ID}`);
   });
@@ -156,7 +156,7 @@ describe("RecordsTab · derivados y manuales (S9-D13)", () => {
     await screen.findByText("Helen (benchmark)");
 
     const manual = rowOf("Deadlift 1RM", "4 sept 2026");
-    expect(manual).not.toHaveTextContent("Se corrige corrigiendo el resultado");
+    expect(manual).not.toHaveTextContent("Para cambiarlo, corrige el resultado");
     expect(within(manual).queryByRole("link")).not.toBeInTheDocument();
   });
 

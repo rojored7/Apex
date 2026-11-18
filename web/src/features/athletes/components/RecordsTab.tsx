@@ -31,7 +31,7 @@ export interface RecordsTabProps {
 export const RECORDS_EMPTY = "Todavía no hay récords registrados. Usa «Registrar récord» para guardar el primero.";
 const FILTERED_EMPTY = "No hay récords con estos filtros. Quita un filtro para ver más.";
 const PAST_END = "Esta página ya no tiene récords.";
-const DERIVED_NOTE = "Se corrige corrigiendo el resultado que lo originó.";
+const DERIVED_NOTE = "Para cambiarlo, corrige el resultado que lo originó.";
 const REASON_TEXT = { superseded: "Resultado corregido", voided: "Resultado anulado", manual_error: "Error de digitación" } as const;
 const KIND_OPTIONS = [
   { value: "rm", label: "RMs" },

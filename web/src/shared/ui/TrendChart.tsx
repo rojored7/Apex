@@ -6,6 +6,7 @@
 // - Los puntos se reparten parejo en horizontal (en el orden recibido) y en vertical entre el mínimo y el máximo de `value`; arriba
 //   queda el mayor, o el menor con `lowerIsBetter` (así el mejor punto de una serie por tiempo también queda arriba).
 // - Los valores que no son números finitos se ignoran. Las fechas de los extremos van en HTML debajo del SVG (no se deforman al escalar).
+// - Un solo punto: un círculo y ninguna línea (ni eje). Con dos o más, el eje cubre de la primera a la última posición de punto.
 // - Un solo punto: un círculo y ninguna línea. Sin puntos: sin SVG, solo el mensaje (por omisión «Sin datos para graficar.»).
 import styles from "./TrendChart.module.css";
 
@@ -35,7 +36,7 @@ export interface TrendChartProps {
 export const TREND_EMPTY = "Sin datos para graficar.";
 
 const WIDTH = 360;
-const HEIGHT = 140;
+const HEIGHT = 120;
 const PAD_X = 16;
 const PAD_Y = 14;
 const RADIUS = 4;
@@ -96,7 +97,7 @@ export function TrendChart({ title, points, emptyMessage = TREND_EMPTY, lowerIsB
   return (
     <div className={styles.wrap}>
       <svg className={styles.chart} viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`} role="img" aria-label={describe(title, drawable)}>
-        <line className={styles.axis} x1={PAD_X} x2={WIDTH - PAD_X} y1={HEIGHT - 2} y2={HEIGHT - 2} />
+        {placed.length > 1 ? <line className={styles.axis} x1={PAD_X} x2={WIDTH - PAD_X} y1={HEIGHT - 2} y2={HEIGHT - 2} /> : null}
         {placed.length > 1 ? <polyline className={styles.line} points={placed.map(({ x, y }) => `${String(x)},${String(y)}`).join(" ")} /> : null}
         {placed.map(({ point, x, y }) => (
           <circle key={point.id} className={point.isBest === true ? styles.best : styles.dot} cx={x} cy={y} r={point.isBest === true ? RADIUS_BEST : RADIUS} {...(point.isBest === true ? { "data-best": "true" } : {})} />

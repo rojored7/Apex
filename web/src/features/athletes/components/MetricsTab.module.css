@@ -16,6 +16,9 @@
 }
 
 .notes {
+  display: flex;
+  align-items: center;
+  min-height: var(--control);
   max-width: 28ch;
 }
 

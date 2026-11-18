@@ -26,7 +26,7 @@
   border: 1px solid var(--danger);
   border-left-width: var(--space-1);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: var(--card);
   color: var(--ink);
   font: var(--text-body);
 }

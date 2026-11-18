@@ -177,4 +177,3 @@ describe("CancelSessionModal", () => {
     expect(await axe(container.ownerDocument.body)).toHaveNoViolations();
   });
 });
-

@@ -229,4 +229,3 @@ describe("ExtraSessionPanel · coach", () => {
     expect(mock.callsTo("GET /users")).toHaveLength(0);
   });
 });
-

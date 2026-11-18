@@ -38,6 +38,8 @@ regexes = [
   # y contraseña ficticia del entorno falso de caddy en test_deploy_script.sh. Por valor exacto.
   '''secreto\-de\-prueba\-0123456789\-abcdefgh''',
   '''valor\-secreto\-caddy\-123''',
+  # Sprint 9 (V1): token ficticio de la TV en web/src/features/system/components/TvSettingsForm.test.tsx (S8-F5). Por valor exacto.
+  '''secreto\-de\-prueba\-0123456789abcdefghijklmnopq''',
   '''cambiar-esto''',
   '''apex-test''',
   '''apex-ci''',

@@ -110,9 +110,9 @@ async def test_una_lista_vieja_no_reenvia_un_aviso_que_otra_pasada_ya_proceso(
 async def test_lock_eligible_exige_que_attempts_coincida(fabrica: Fabrica) -> None:
     aviso = await _un_aviso(fabrica, status="failed", attempts=1, last_error="timeout")
     async with fabrica() as sesion, sesion.begin():
-        assert await sending._lock_eligible(sesion, aviso.id, 0, HOY, 3) is None
+        assert await sending.lock_eligible(sesion, aviso.id, 0, HOY, 3) is None
     async with fabrica() as sesion, sesion.begin():
-        fila = await sending._lock_eligible(sesion, aviso.id, 1, HOY, 3)
+        fila = await sending.lock_eligible(sesion, aviso.id, 1, HOY, 3)
         assert fila is not None and fila.id == aviso.id
 
 

@@ -39,7 +39,7 @@ async def _sin_records(session: AsyncSession, kgs: list[int], mes: str = "10") -
 
 async def _sentencias(session: AsyncSession, e: Any) -> list[str]:
     with actor_scope(SYSTEM_USER_ID), contar_sentencias(session, ("SELECT", "INSERT")) as vistas:
-        await athletes_service.rederive_member(session, e.socio_id, strict=True)
+        await athletes_service.rederive_member(session, e.socio_id)
     return list(vistas)
 
 
@@ -65,7 +65,7 @@ async def test_un_solo_flush_por_socio_aunque_cree_varios_records(
 
     monkeypatch.setattr(session, "flush", contar)
     with actor_scope(SYSTEM_USER_ID):
-        r = await athletes_service.rederive_member(session, e.socio_id, strict=True)
+        r = await athletes_service.rederive_member(session, e.socio_id)
     assert r.created == 3
     assert len(llamadas) == 1
 

@@ -18,6 +18,7 @@ import json
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import partial
 from typing import Any, Literal
 from uuid import UUID
 
@@ -331,7 +332,8 @@ async def test_base_ocupada_se_reintenta_tres_veces_cuenta_y_sigue_con_los_demas
         await original(sesion, member_id)
 
     monkeypatch.setattr(comando, "lock_member", espiar)
-    monkeypatch.setattr(comando, "BUSY_WAIT_S", 0.0)
+    original_derive = comando._derive
+    monkeypatch.setattr(comando, "_derive", partial(original_derive, busy_wait_s=0.0))
     corta = settings_prueba.model_copy(update={"DB_LOCK_TIMEOUT_MS": 300})
 
     async with engine.connect() as ajena:
@@ -367,10 +369,8 @@ async def test_fallo_forzado_revierte_a_ese_socio_entero_cuenta_y_sigue(
         await una.commit()
     original = athletes_service.rederive_member
 
-    async def falla_despues_de_escribir(
-        sesion: AsyncSession, member_id: UUID, *, strict: bool
-    ) -> Any:
-        resultado = await original(sesion, member_id, strict=strict)
+    async def falla_despues_de_escribir(sesion: AsyncSession, member_id: UUID) -> Any:
+        resultado = await original(sesion, member_id)
         if member_id == malo.socio_id:
             raise RuntimeError("fallo forzado")
         return resultado

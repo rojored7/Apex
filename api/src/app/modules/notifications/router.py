@@ -214,7 +214,7 @@ async def list_notifications(
         from_date=from_date,
         to_date=to_date,
     )
-    return await service.list(session, filters, page)
+    return await service.list_(session, filters, page)
 
 
 @router.get(

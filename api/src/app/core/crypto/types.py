@@ -237,5 +237,11 @@ def reveal(obj: object, field: str, purpose: str) -> str | date | dict[str, Any]
     if not isinstance(valor, Secret) or not valor.is_sealed:
         raise CryptoError("unsupported", f"{field} aún no está cifrado (haga flush)")
     record_id = obj.id  # type: ignore[attr-defined]
-    datos = bus.decrypt(valor.blob, bus.aad_for(record_id), purpose=purpose, record_id=record_id)
+    datos = bus.decrypt(
+        valor.blob,
+        bus.aad_for(record_id),
+        purpose=purpose,
+        record_id=record_id,
+        expect_class=tipo.data_class,
+    )
     return _from_bytes(datos, get_spec(tipo.data_class))

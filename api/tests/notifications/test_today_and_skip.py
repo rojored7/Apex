@@ -264,7 +264,7 @@ async def test_hoy_no_incluye_avisos_de_socios_dados_de_baja_pero_el_historial_s
     aviso_baja = await _aviso(session, regla, baja)
 
     hoy = await service.today_list(session, HOY, PAGINA, None)
-    historial = await service.list(session, NotificationFilters(), PAGINA)
+    historial = await service.list_(session, NotificationFilters(), PAGINA)
     pestana = await service.list_for_member(session, baja.id, PAGINA)
 
     assert [a.id for a in hoy.items] == [aviso_vivo.id] and hoy.total == 1

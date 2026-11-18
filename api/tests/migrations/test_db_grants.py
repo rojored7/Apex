@@ -1820,7 +1820,7 @@ def test_attachments_apex_api_inserta_y_actualiza_key_id_y_apex_backup_lee(
     assert verbo("apex_backup", "SELECT") and not verbo("apex_backup", "INSERT")
 
 
-# S9-A1 (S9-D18, P-ROL): el esquema `athletes` y sus 31 tablas clasificadas --------------------
+# S9-A1 (S9-D18, P-ROL): el esquema `athletes` y sus 32 tablas clasificadas --------------------
 
 
 def test_son_32_las_tablas_clasificadas_y_athletes_esta_entre_ellas() -> None:
@@ -1914,6 +1914,21 @@ def test_ningun_rol_puede_borrar_ni_truncar_records(apex_roles: RolesDb) -> None
                 verbo,
             )[0]["v"]
             assert not tiene, f"{rol} tiene {verbo} en athletes.personal_records"
+
+
+def test_apex_backup_solo_lee_las_medidas_y_el_worker_nada(apex_roles: RolesDb) -> None:
+    def tiene(rol: str, verbo: str) -> bool:
+        return bool(
+            consultar(
+                apex_roles.dsn(),
+                "SELECT has_table_privilege($1, 'athletes.body_metrics', $2) AS v",
+                rol,
+                verbo,
+            )[0]["v"]
+        )
+
+    assert tiene("apex_backup", "SELECT") and not tiene("apex_backup", "INSERT")
+    assert not any(tiene("apex_worker", v) for v in ("SELECT", "INSERT", "UPDATE"))
 
 
 def test_apex_backup_solo_lee_los_records_y_el_worker_nada(apex_roles: RolesDb) -> None:

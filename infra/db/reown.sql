@@ -13,8 +13,12 @@
 \set ON_ERROR_STOP on
 DO $$
 DECLARE
-    esquemas constant text[] := ARRAY['audit', 'auth', 'crypto', 'members', 'memberships',
-                                      'payments', 'plans', 'settings', 'worker'];
+    -- Todos los esquemas de la aplicacion (los mismos de `REVOKE ... IN SCHEMA` de grants.sql, sin
+    -- `public`); `tests/migrations/test_db_reown.py` compara ambas listas (S9-V7b, L5).
+    esquemas constant text[] := ARRAY['athletes', 'attachments', 'audit', 'auth', 'classes',
+                                      'crypto', 'members', 'memberships', 'notifications',
+                                      'payments', 'plans', 'results', 'settings', 'wods',
+                                      'worker'];
     o record;
     cambios integer := 0;
 BEGIN

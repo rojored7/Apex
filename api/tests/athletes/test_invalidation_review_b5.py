@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import events
 from app.core.context import actor_scope
 from app.modules.athletes import derive, service
-from app.modules.athletes.records import result_ids_with_record
+from app.modules.athletes.queries import result_ids_with_record
 from app.modules.results import service as results_service
 from tests.athletes._apoyo import alta_record, cuerpo_rm
 from tests.athletes._apoyo_derivar import AlertasCapturadas, contar_sentencias, records_de

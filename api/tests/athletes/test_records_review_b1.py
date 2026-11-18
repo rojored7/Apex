@@ -20,7 +20,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainError
-from app.modules.athletes import records
+from app.modules.athletes import queries, records
 from app.modules.athletes.exceptions import RecordValidationError
 from app.modules.athletes.rules import RecordRow, pick_current
 from app.modules.results.exceptions import ResultValidationError
@@ -47,7 +47,7 @@ def _sql(stmt: Any) -> str:
 
 
 def test_la_consulta_de_vigentes_lleva_kind_como_literal_y_la_columna_desnuda() -> None:
-    sql = _sql(records.current_query(uuid4(), {uuid4()}, {uuid4()}))
+    sql = _sql(queries.current_query(uuid4(), {uuid4()}, {uuid4()}))
     assert "kind = 'rm'" in sql and "kind = 'benchmark'" in sql
     assert "invalidated_at IS NULL" in sql
     assert "= 'rm'" in sql and "%(kind" not in sql and "kind = %(" not in sql

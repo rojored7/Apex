@@ -17,24 +17,15 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date
-from typing import Any, Final, Literal
+from typing import Final, Literal
 from uuid import UUID
 
 from sqlalchemy import (
-    ColumnElement,
     Select,
-    and_,
-    any_,
-    bindparam,
     func,
-    literal_column,
-    or_,
     select,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
@@ -42,6 +33,7 @@ from app.core.clock import current_clock
 from app.core.errors import ForbiddenError
 from app.core.locks import lock_member
 from app.core.pagination import Page, PageParams, paginate, to_page
+from app.modules.athletes import derive
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.athletes.exceptions import (
     RecordAlreadyInvalidated,
@@ -51,7 +43,16 @@ from app.modules.athletes.exceptions import (
     RecordValidationError,
 )
 from app.modules.athletes.models import PersonalRecord
-from app.modules.athletes.rules import EARLIEST_MEASURED_ON, RecordRow, can_void, pick_current
+from app.modules.athletes.queries import KIND_SQL, current_query, row_of
+from app.modules.athletes.rules import (
+    EARLIEST_MEASURED_ON,
+    Objective,
+    RecordKind,
+    RecordRow,
+    as_kind,
+    can_void,
+    pick_current,
+)
 from app.modules.athletes.schemas import RecordIn, RecordOut
 from app.modules.auth import service as auth_service
 from app.modules.members import service as members_service
@@ -65,14 +66,6 @@ VALUE_MIN_G: Final = 1
 VALUE_MAX_G: Final = 1_000_000
 RM_UNIT: Final = "kg"
 _MARK_FIELDS: Final[tuple[str, ...]] = ("seconds", "rounds", "reps", "load_g")
-
-
-@dataclass(frozen=True, slots=True)
-class _Objective:
-    """El objetivo de un récord: un movimiento (RM) o un benchmark."""
-
-    kind: str
-    target_id: UUID
 
 
 # Campo de `validate_score` -> campo de `RecordIn` (L3). Lo desconocido (`wod_id`: el tipo del
@@ -119,68 +112,15 @@ def _check_shape(data: RecordIn, today: date) -> None:
         raise _fail("value_g", "Un récord de benchmark no lleva carga de RM.")
 
 
-def row_of(record: PersonalRecord) -> RecordRow:
-    return RecordRow(
-        id=record.id,
-        kind=record.kind,
-        movement_id=record.movement_id,
-        benchmark_id=record.benchmark_id,
-        value_g=record.value_g,
-        level=record.level,
-        seconds=record.seconds,
-        rounds=record.rounds,
-        reps=record.reps,
-        load_g=record.load_g,
-        capped=record.capped,
-        achieved_on=record.achieved_on,
-        created_at=record.created_at,
-        invalidated_at=record.invalidated_at,
-        source=record.source,
-    )
-
-
-def _objective_of(record: PersonalRecord) -> _Objective:
+def _objective_of(record: PersonalRecord) -> Objective:
     destino = record.movement_id if record.kind == "rm" else record.benchmark_id
     if destino is None:  # la forma de la tabla (CHECK) lo impide
         raise ValueError("récord sin objetivo")
-    return _Objective(record.kind, destino)
-
-
-# Literales SQL (S8-D50): con `kind = $1` el plan genérico no casa con los índices parciales
-# `ix_personal_records_rm` / `_bench` (cuyo predicado lleva `kind = 'rm'`). Solo estos dos textos
-# constantes; nunca un valor del cliente.
-KIND_SQL: Final[dict[str, ColumnElement[Any]]] = {
-    "rm": literal_column("'rm'"),
-    "benchmark": literal_column("'benchmark'"),
-}
-
-
-def current_query(
-    member_id: UUID, movimientos: set[UUID], benchmarks: set[UUID]
-) -> Select[PersonalRecord]:
-    """Los récords NO invalidados de esos objetivos: `kind` literal y `invalidated_at IS NULL` con
-    la columna desnuda, el predicado de `ix_personal_records_rm` y `_bench` (S8-D50)."""
-    condiciones = []
-    if movimientos:
-        condiciones.append(
-            and_(PersonalRecord.kind == KIND_SQL["rm"], PersonalRecord.movement_id.in_(movimientos))
-        )
-    if benchmarks:
-        condiciones.append(
-            and_(
-                PersonalRecord.kind == KIND_SQL["benchmark"],
-                PersonalRecord.benchmark_id.in_(benchmarks),
-            )
-        )
-    return select(PersonalRecord).where(
-        PersonalRecord.member_id == member_id,
-        PersonalRecord.invalidated_at.is_(None),
-        or_(*condiciones),
-    )
+    return Objective(as_kind(record.kind), destino)
 
 
 def list_query(
-    member_id: UUID, *, kind: str | None, include_invalidated: bool
+    member_id: UUID, *, kind: RecordKind | None, include_invalidated: bool
 ) -> Select[PersonalRecord]:
     """La lista del socio con orden total: fecha, alta e id descendentes."""
     consulta = select(PersonalRecord).where(PersonalRecord.member_id == member_id)
@@ -198,7 +138,7 @@ def list_query(
 async def _current_ids(
     session: AsyncSession,
     member_id: UUID,
-    objectives: set[_Objective],
+    objectives: set[Objective],
     score_types: dict[UUID, str],
 ) -> set[UUID]:
     """Ids de los récords vigentes de esos objetivos, con UNA consulta."""
@@ -207,7 +147,7 @@ async def _current_ids(
     if not movimientos and not benchmarks:
         return set()
     filas = await session.scalars(current_query(member_id, movimientos, benchmarks))
-    grupos: dict[_Objective, list[RecordRow]] = defaultdict(list)
+    grupos: dict[Objective, list[RecordRow]] = defaultdict(list)
     for fila in filas:
         grupos[_objective_of(fila)].append(row_of(fila))
     vigentes: set[UUID] = set()
@@ -219,41 +159,6 @@ async def _current_ids(
         if elegido is not None:
             vigentes.add(elegido.id)
     return vigentes
-
-
-async def current_rm(session: AsyncSession, member_id: UUID, movement_id: UUID) -> RecordRow | None:
-    """El RM vigente del socio para un movimiento (UNA consulta, sin candados; N-45). Lo usa el
-    handler de derivación (`derive.py`), que corre bajo el `lock_member` del emisor."""
-    filas = await session.scalars(current_query(member_id, {movement_id}, set()))
-    return pick_current([row_of(f) for f in filas])
-
-
-async def current_benchmark(
-    session: AsyncSession, member_id: UUID, benchmark_id: UUID, score_type: str
-) -> RecordRow | None:
-    """El récord de benchmark vigente del socio (UNA consulta, sin candados; N-45): el de menor
-    `score_key` del tipo de marca. Lo usa el handler de derivación (B4)."""
-    filas = await session.scalars(current_query(member_id, set(), {benchmark_id}))
-    return pick_current([row_of(f) for f in filas], score_type=score_type)
-
-
-async def result_ids_with_record(
-    session: AsyncSession, member_id: UUID, kind: str, result_ids: Sequence[UUID]
-) -> set[UUID]:
-    """Los resultados de esa lista que ya tienen un récord de ese `kind`, vivo o no (UNA consulta
-    por `ix_personal_records_member_date`; el filtro por socio es defensa, sin candados): la
-    reposición no los toca (un segundo récord del mismo `(result_id, kind)` lo rechaza la base)."""
-    if not result_ids:
-        return set()
-    filas = await session.scalars(
-        select(PersonalRecord.result_id).where(
-            PersonalRecord.member_id == member_id,
-            PersonalRecord.kind == KIND_SQL[kind],
-            PersonalRecord.result_id
-            == any_(bindparam("ids", list(set(result_ids)), type_=ARRAY(PG_UUID(as_uuid=True)))),
-        )
-    )
-    return {f for f in filas if f is not None}
 
 
 def _to_out(
@@ -521,14 +426,8 @@ async def invalidate_manual_record(
     record.invalidated_by = by
     await session.flush()
     objetivo = _objective_of(record)
-    # Import perezoso: `derive` importa este módulo (`current_rm`, `current_benchmark`).
-    from app.modules.athletes import derive
-
     await derive.restore_after_manual(
-        session,
-        member_id,
-        kind="rm" if objetivo.kind == "rm" else "benchmark",
-        target_id=objetivo.target_id,
+        session, member_id, kind=objetivo.kind, target_id=objetivo.target_id
     )
     logger.info("athletes: récord manual invalidado", extra={"record_id": str(record.id)})
     return await _invalidated_out(session, record)

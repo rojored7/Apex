@@ -158,7 +158,7 @@ async def test_list_trae_el_campo_correcto_por_aviso(session: AsyncSession) -> N
     _, bueno = await _escenario(session, regla=regla)
     _, sin_telefono = await _escenario(session, telefono=None, regla=regla)
 
-    pagina = await service.list(session, NotificationFilters(), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(), PAGINA)
 
     assert {f.id: f.can_whatsapp for f in pagina.items} == {bueno.id: True, sin_telefono.id: False}
 
@@ -221,7 +221,7 @@ async def test_una_pagina_llama_una_vez_a_whatsapp_ready_y_lee_la_configuracion_
     monkeypatch.setattr(members_service, "whatsapp_ready", espia_ready)
     monkeypatch.setattr(settings_service, "get", espia_get)
 
-    pagina = await service.list(session, NotificationFilters(), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(), PAGINA)
 
     assert len(pagina.items) == 3
     assert len(llamadas_ready) == 1 and len(llamadas_ready[0]) == 3
@@ -243,7 +243,7 @@ async def test_en_una_pagina_mezclada_solo_el_aviso_con_las_cinco_condiciones_es
     )
     _, de_correo = await _escenario(session, regla=regla_correo)
 
-    pagina = await service.list(session, NotificationFilters(), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(), PAGINA)
 
     esperado = {bueno.id: True}
     esperado.update(
@@ -256,6 +256,6 @@ async def test_con_el_canal_apagado_toda_la_pagina_es_falsa(session: AsyncSessio
     regla = await make_rule(session)
     _, aviso = await _escenario(session, regla=regla, habilitado=False)
 
-    pagina = await service.list(session, NotificationFilters(), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(), PAGINA)
 
     assert [(f.id, f.can_whatsapp) for f in pagina.items] == [(aviso.id, False)]

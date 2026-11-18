@@ -1,6 +1,6 @@
 """Historial y pestaña del socio (S5-B7, US-130; S5-D92, N-20). # Rojo B7
 
-`service.list(session, filters, page)`: todos los avisos (cualquier estado) con filtros `status`,
+`service.list_(session, filters, page)`: todos los avisos (cualquier estado) con filtros `status`,
 `channel`, `rule_id`, `from_date`/`to_date` (sobre `target_date`, extremos incluidos) y `q` por
 nombre del socio (`members.service.search_ids`, también dados de baja); orden `target_date`
 descendente y luego `id`; `member_name` de `members.service.names_for`.
@@ -38,7 +38,7 @@ def _dia(atras: int) -> Any:
 
 
 async def _historial(session: AsyncSession, **filtros: Any) -> list[NotificationOut]:
-    pagina = await service.list(session, NotificationFilters(**filtros), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(**filtros), PAGINA)
     return list(pagina.items)
 
 
@@ -51,7 +51,7 @@ async def test_sin_filtros_trae_todos_los_estados_de_mas_nuevo_a_mas_viejo(
         for atras, estado in enumerate(["pending", "sent", "failed", "skipped"])
     ]
 
-    pagina = await service.list(session, NotificationFilters(), PAGINA)
+    pagina = await service.list_(session, NotificationFilters(), PAGINA)
 
     assert [a.id for a in pagina.items] == [a.id for a in creados]
     assert [a.target_date for a in pagina.items] == sorted(
@@ -140,8 +140,8 @@ async def test_el_historial_pagina(session: AsyncSession) -> None:
     for atras in range(5):
         await make_notification(session, regla, target_date=_dia(atras))
 
-    primera = await service.list(session, NotificationFilters(), PageParams(limit=2, offset=0))
-    segunda = await service.list(session, NotificationFilters(), PageParams(limit=2, offset=2))
+    primera = await service.list_(session, NotificationFilters(), PageParams(limit=2, offset=0))
+    segunda = await service.list_(session, NotificationFilters(), PageParams(limit=2, offset=2))
 
     assert (primera.total, segunda.total) == (5, 5)
     assert [a.target_date for a in primera.items] == [_dia(0), _dia(1)]

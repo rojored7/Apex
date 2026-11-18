@@ -9,6 +9,7 @@ triggers, `alembic` y la vuelta atrás. Solo toca `db_test`.
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -31,14 +32,20 @@ BASE = "apex_reown"
 OWNER = "apex_owner"
 CLAVE = "reown-prueba-0123456789-abcd"  # solo vive en db_test
 ESQUEMAS_APP = (
+    "athletes",
+    "attachments",
     "audit",
     "auth",
+    "classes",
     "crypto",
     "members",
     "memberships",
+    "notifications",
     "payments",
     "plans",
+    "results",
     "settings",
+    "wods",
     "worker",
 )
 SQL_TRIGGERS = (
@@ -195,6 +202,19 @@ def test_vuelta_atras_y_grants_se_vuelven_a_aplicar(base_migrada: str) -> None:
         resultado = aplicar_archivo(BASE, archivo)
         assert resultado.returncode == 0, f"{archivo}: {resultado.stderr}"
     assert _duenios(base_migrada)["esquemas"] == {e: OWNER for e in ESQUEMAS_APP}
+
+
+def test_la_lista_de_esquemas_de_reown_es_la_de_grants_sql() -> None:
+    """S9-V7b (L5): `reown.sql` no se queda atrás cuando una versión crea un esquema nuevo."""
+    reown = (INFRA_DB / "reown.sql").read_text(encoding="utf-8")
+    grants = (INFRA_DB / "grants.sql").read_text(encoding="utf-8")
+    bloque = re.search(r"esquemas constant text\[\] := ARRAY\[([^\]]*)\]", reown)
+    assert bloque is not None
+    en_reown = set(re.findall(r"'([a-z_]+)'", bloque.group(1)))
+    revoke = re.search(r"^REVOKE ALL ON ALL TABLES IN SCHEMA ([^;]*?) FROM PUBLIC;", grants, re.M)
+    assert revoke is not None
+    en_grants = {e.strip() for e in revoke.group(1).split(",")} - {"public"}
+    assert en_reown == en_grants == set(ESQUEMAS_APP)
 
 
 def test_reown_exige_apex_owner_y_superusuario() -> None:

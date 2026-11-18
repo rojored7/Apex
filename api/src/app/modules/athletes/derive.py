@@ -40,19 +40,17 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
-from app.core.alerts import alert
 from app.core.context import get_actor
 from app.core.db import DatabaseBusy, is_connection_error, translate_busy, violated_constraint
 from app.core.events import EventDepthExceeded
+from app.modules.athletes.alerts import safe_alert
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.athletes.models import PersonalRecord
-from app.modules.athletes.records import (
-    current_benchmark,
-    current_rm,
-    result_ids_with_record,
-)
+from app.modules.athletes.queries import current_benchmark, current_rm, result_ids_with_record
 from app.modules.athletes.rules import (
+    Objective,
     RecordDraft,
+    RecordKind,
     RecordRow,
     best_candidate,
     derive_benchmark,
@@ -111,10 +109,7 @@ def _skip(event: _Source, error: Exception) -> None:
     else:
         datos["result_id"] = str(event.result_id)
         logger.warning("athletes: derivación omitida", extra=datos)
-    try:
-        alert("athletes_derive_skipped", error_type=type(error).__name__)
-    except Exception as alert_error:
-        logger.warning("athletes: alerta omitida", extra={"error_type": type(alert_error).__name__})
+    safe_alert("athletes_derive_skipped", error_type=type(error).__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +138,7 @@ async def _plan(event: WodResultValidated, session: AsyncSession) -> _Plan | Non
     return _Plan(mark, meta, mark.validated_by)
 
 
-def _possible(event: _Source, plan: _Plan, kind: str) -> bool:
+def _possible(event: _Source, plan: _Plan, kind: RecordKind) -> bool:
     """¿Puede nacer un récord de ese `kind`? Regla pura con vigente `None` (la más permisiva), en su
     propio `try`: si ni así deriva no se lee el vigente ni se abre savepoint (S9-D30); si lanza es
     fallo blando de ESE récord y el otro sigue (S9-D59, LOW-2)."""
@@ -177,7 +172,7 @@ async def _insert(draft: RecordDraft, member_id: UUID, by: UUID, session: AsyncS
         PersonalRecordSet(
             record_id=record.id,
             member_id=member_id,
-            kind="rm" if draft.kind == "rm" else "benchmark",
+            kind=draft.kind,
             movement_id=draft.movement_id,
             benchmark_id=draft.benchmark_id,
             source="derived",
@@ -250,19 +245,11 @@ async def on_wod_result_validated(event: WodResultValidated, session: AsyncSessi
 # S9-B5 (US-181; S9-D7, S9-D10, S9-D11, S9-D30, S9-D42): invalidar y reponer -----------------------
 
 
-@dataclass(frozen=True, slots=True)
-class _Target:
-    """El objetivo de un récord invalidado: un movimiento (`rm`) o un benchmark."""
-
-    kind: Literal["rm", "benchmark"]
-    target_id: UUID
-
-
-def _target_of(kind: str, movement_id: UUID | None, benchmark_id: UUID | None) -> _Target | None:
+def _target_of(kind: str, movement_id: UUID | None, benchmark_id: UUID | None) -> Objective | None:
     if kind == "rm" and movement_id is not None:
-        return _Target("rm", movement_id)
+        return Objective("rm", movement_id)
     if kind == "benchmark" and benchmark_id is not None:
-        return _Target("benchmark", benchmark_id)
+        return Objective("benchmark", benchmark_id)
     return None  # la forma de la tabla (CHECK) lo impide
 
 
@@ -273,7 +260,7 @@ async def _invalidate(
     result_id: UUID,
     reason: Literal["superseded", "voided"],
     by_result: UUID | None,
-) -> list[_Target]:
+) -> list[Objective]:
     """Invalida por ORM (S9-D42) los récords `derived` VIVOS de ese resultado: lee las filas
     (`uq_personal_records_result_kind`), asigna `invalidated_at` y `updated_at` con el
     `clock_timestamp()` de la base (S9-D52: el reloj de la aplicación puede ir detrás del
@@ -309,7 +296,7 @@ async def _invalidate(
     return [t for t in tocados if t is not None]
 
 
-def _draft_from_mark(mark: ResultMark, target: _Target) -> RecordDraft:
+def _draft_from_mark(mark: ResultMark, target: Objective) -> RecordDraft:
     """El borrador del récord que repone `mark` (ya elegida por `best_candidate`)."""
     es_rm = target.kind == "rm"
     return RecordDraft(
@@ -331,14 +318,11 @@ def _draft_from_mark(mark: ResultMark, target: _Target) -> RecordDraft:
 
 def _alert_capped(marcas: int) -> None:
     """Tope de marcas candidatas alcanzado (S9-D30): alerta con el conteo, sin ids y en su `try`."""
-    try:
-        alert("athletes_restore_capped", marcas=marcas)
-    except Exception as error:
-        logger.warning("athletes: alerta omitida", extra={"error_type": type(error).__name__})
+    safe_alert("athletes_restore_capped", marcas=marcas)
 
 
 async def _candidate_marks(
-    session: AsyncSession, member_id: UUID, target: _Target
+    session: AsyncSession, member_id: UUID, target: Objective
 ) -> tuple[list[ResultMark], str | None]:
     """Las marcas vigentes y validadas del objetivo, filtradas EN SQL y con tope (S9-D11, S9-D30):
     RM por los WODs `load` con ese principal; benchmark por `benchmark_id`. Devuelve también el
@@ -367,7 +351,7 @@ async def _candidate_marks(
     return marcas, ref.score_type
 
 
-async def _restore(session: AsyncSession, member_id: UUID, target: _Target) -> None:
+async def _restore(session: AsyncSession, member_id: UUID, target: Objective) -> None:
     """Repone UN récord derivado con la mejor marca SIN récord, si supera al vigente (S9-D11)."""
     marcas, score_type = await _candidate_marks(session, member_id, target)
     if len(marcas) > RESTORE_MAX_MARKS:
@@ -397,7 +381,7 @@ async def _restore_best(
     session: AsyncSession,
     *,
     member_id: UUID,
-    kind: Literal["rm", "benchmark"],
+    kind: RecordKind,
     target_id: UUID,
 ) -> None:
     """Repone UN récord derivado con la mejor marca sin récord vivo (S9-D11), DENTRO de su
@@ -405,11 +389,11 @@ async def _restore_best(
     `member_marks` con filtro en SQL (RM: `wods.wod_ids_with_primary`; benchmark: `benchmark_id`)
     y a lo sumo `RESTORE_MAX_MARKS + 1` marcas: si hay más de `RESTORE_MAX_MARKS`, alerta
     `athletes_restore_capped` con `marcas=N` (sin ids) y NO repone."""
-    target = _Target(kind, target_id)
+    target = Objective(kind, target_id)
     await _guarded(event, session, lambda: _restore(session, member_id, target))
 
 
-async def _superseded_targets(session: AsyncSession, mark: ResultMark) -> list[_Target]:
+async def _superseded_targets(session: AsyncSession, mark: ResultMark) -> list[Objective]:
     """Los objetivos de los récords que la corrección `mark` invalidó (S9-D30): las filas del
     resultado anterior con `invalidated_by_result_id` = el nuevo (UNA lectura por
     `uq_personal_records_result_kind`)."""
@@ -443,7 +427,7 @@ async def _restore_superseded(
 
 
 async def restore_after_manual(
-    session: AsyncSession, member_id: UUID, *, kind: Literal["rm", "benchmark"], target_id: UUID
+    session: AsyncSession, member_id: UUID, *, kind: RecordKind, target_id: UUID
 ) -> None:
     """Reposición tras invalidar un récord MANUAL (S9-D13): la misma regla y el mismo fallo
     blando que la de un resultado; sin evento, el log lleva solo el socio."""
@@ -529,7 +513,7 @@ async def _page_drafts(
     member_id: UUID,
     marcas: list[ResultMark],
     metas: dict[UUID, WodRecordMeta],
-    vigentes: dict[tuple[str, UUID], RecordRow | None],
+    vigentes: dict[tuple[RecordKind, UUID], RecordRow | None],
 ) -> list[RecordDraft]:
     """Borradores de UNA página: reglas puras en orden, con el vigente leído UNA vez por objetivo
     y actualizado en memoria tras cada borrador."""
@@ -543,7 +527,7 @@ async def _page_drafts(
         meta = metas.get(marca.wod_id)
         if meta is None:
             continue
-        objetivos: list[tuple[str, UUID]] = []
+        objetivos: list[tuple[RecordKind, UUID]] = []
         if meta.score_type == "load" and meta.primary_movement_id is not None:
             objetivos.append(("rm", meta.primary_movement_id))
         if meta.benchmark_id is not None and marca.benchmark_id == meta.benchmark_id:
@@ -573,7 +557,7 @@ async def _rederive(session: AsyncSession, member_id: UUID) -> int:
     """Recorre TODAS las marcas del socio por páginas, calcula los borradores en memoria y escribe
     con un solo `add_all` + `flush` al final (un solo candado de la cadena de auditoría)."""
     metas: dict[UUID, WodRecordMeta] = {}
-    vigentes: dict[tuple[str, UUID], RecordRow | None] = {}
+    vigentes: dict[tuple[RecordKind, UUID], RecordRow | None] = {}
     borradores: list[RecordDraft] = []
     cursor: tuple[date, UUID] | None = None
     while True:
@@ -593,20 +577,12 @@ async def _rederive(session: AsyncSession, member_id: UUID) -> int:
     return len(borradores)
 
 
-async def rederive_member(
-    session: AsyncSession, member_id: UUID, *, strict: bool
-) -> RederiveResult:
+async def rederive_member(session: AsyncSession, member_id: UUID) -> RederiveResult:
     """Deriva los récords que falten de un socio con las MISMAS reglas puras (S9-D21, S9-D62).
 
     El llamador ya tiene `lock_member` y su transacción. Recorre todas las marcas vigentes y
     validadas en orden de `wod_date` (páginas por llave, sin topes: el vigente de cada objetivo
     queda en el máximo real, M-6), así que puede crear históricos que la vía en vivo no creó.
-    Sin `PersonalRecordSet`; `created_by` es el actor del contexto. `strict=True` no traga errores
-    (decide el comando); `strict=False` corre todo en UN savepoint con el fallo blando de
-    `_guarded`."""
-    if strict:
-        return RederiveResult(await _rederive(session, member_id))
-    creados = await _guarded(
-        _ManualSource(member_id), session, lambda: _rederive(session, member_id)
-    )
-    return RederiveResult(creados or 0)
+    Sin `PersonalRecordSet`; `created_by` es el actor del contexto. No traga errores: los clasifica
+    el comando (`derive-records`; S9-V7b, M1: la rama blanda no tenía llamador)."""
+    return RederiveResult(await _rederive(session, member_id))

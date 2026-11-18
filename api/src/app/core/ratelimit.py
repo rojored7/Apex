@@ -418,6 +418,8 @@ async def usage(bucket: str, key: str, *, window_s: int, kind: KeyKind = "user")
     return await store_for(kind).count((bucket, key), _ahora(), window_s)
 
 
+REVEAL_ALERT_WINDOW_S: Final = 3600
+"""Una alerta `reveal_volume` por usuario y hora (S9-D5)."""
 REVEAL_HOUR_BUCKET: Final = "members-reveal-hour"
 """La ventana del aviso `reveal volume` (S3-D44; S9-D5 lo mueve aquí desde `members/router.py`)."""
 
@@ -462,7 +464,3 @@ async def warn_reveal_volume(request: Request, user_id: UUID) -> None:
     except Exception as error:
         # Solo el tipo: el contexto y el usuario no se registran aquí.
         logger.warning("reveal volume alert failed", extra={"error_type": type(error).__name__})
-
-
-REVEAL_ALERT_WINDOW_S: Final = 3600
-"""Una alerta `reveal_volume` por usuario y hora (S9-D5)."""

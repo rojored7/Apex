@@ -43,6 +43,7 @@ EARLIEST_MEASURED_ON: Final = date(2000, 1, 1)
 SELF_UNDO_WINDOW_H: Final = 24  # S9-D33 (M-3): ventana en la que el coach deshace lo suyo
 ADMIN_ROLE: Final = "admin"
 COACH_ROLE: Final = "coach"
+RecordKind = Literal["rm", "benchmark"]
 
 # Campo -> (mínimo, máximo, dígitos del ancho fijo).
 _NUMERIC: Final[dict[str, tuple[int, int, int]]] = {
@@ -183,12 +184,30 @@ def can_void(
 # S9-B1 (US-180; S9-D10, N-45): el récord vigente ------------------------------------------------
 
 
+def as_kind(valor: str) -> RecordKind:
+    """Estrecha el `kind` leído de la base (texto) al literal; la forma de la tabla (CHECK
+    `kind`) garantiza que es uno de los dos."""
+    if valor == "rm":
+        return "rm"
+    if valor == "benchmark":
+        return "benchmark"
+    raise ValueError("kind de récord desconocido")
+
+
+@dataclass(frozen=True, slots=True)
+class Objective:
+    """El objetivo de un récord: un movimiento (`rm`) o un benchmark (S9-V7b, L4: un solo tipo)."""
+
+    kind: RecordKind
+    target_id: UUID
+
+
 @dataclass(frozen=True, slots=True)
 class RecordRow:
     """Lo que `pick_current` necesita de un récord: sin ORM ni nombres (pura)."""
 
     id: UUID
-    kind: str
+    kind: RecordKind
     movement_id: UUID | None
     benchmark_id: UUID | None
     value_g: int | None
@@ -216,6 +235,11 @@ class _Score:
     capped: bool
 
 
+def _score_of(row: RecordRow) -> _Score:
+    """La marca de un récord vigente con la forma de `ScoreLike` (nivel `rx` si no lleva)."""
+    return _Score(row.level or "rx", row.seconds, row.rounds, row.reps, row.load_g, row.capped)
+
+
 def pick_current(
     records: Sequence[RecordRow], *, score_type: str | None = None
 ) -> RecordRow | None:
@@ -235,8 +259,7 @@ def pick_current(
         clave = score_key(score_type)
 
         def orden(r: RecordRow) -> tuple[Any, ...]:
-            marca = _Score(r.level or "rx", r.seconds, r.rounds, r.reps, r.load_g, r.capped)
-            return (clave(marca), r.achieved_on, r.created_at, r.id)
+            return (clave(_score_of(r)), r.achieved_on, r.created_at, r.id)
     else:
 
         def orden(r: RecordRow) -> tuple[Any, ...]:
@@ -254,7 +277,7 @@ class RecordDraft:
     resultado y WOD nace. `kind = "rm"` lleva `movement_id` y `value_g`; `kind = "benchmark"`
     (B4) lleva `benchmark_id` y las marcas. `achieved_on` es la fecha del WOD."""
 
-    kind: str
+    kind: RecordKind
     movement_id: UUID | None
     benchmark_id: UUID | None
     value_g: int | None
@@ -331,15 +354,7 @@ def derive_benchmark(
         return None
     clave = score_key(meta.score_type)
     if current is not None:
-        vigente = _Score(
-            current.level or "rx",
-            current.seconds,
-            current.rounds,
-            current.reps,
-            current.load_g,
-            current.capped,
-        )
-        if not clave(mark) < clave(vigente):
+        if not clave(mark) < clave(_score_of(current)):
             return None
     return RecordDraft(
         kind="benchmark",
@@ -400,15 +415,7 @@ def best_candidate(
         return None
     mejor = min(elegibles, key=lambda m: (clave(m), m.wod_date, m.result_id))
     if current is not None:
-        vigente = _Score(
-            current.level or "rx",
-            current.seconds,
-            current.rounds,
-            current.reps,
-            current.load_g,
-            current.capped,
-        )
-        if not clave(mejor) < clave(vigente):
+        if not clave(mejor) < clave(_score_of(current)):
             return None
     return mejor
 

@@ -47,6 +47,11 @@ class BodyMetric(CommonColumnsMixin, Base):
             name="at_least_one_measure",
         ),
         CheckConstraint("(voided_at IS NULL) = (voided_by IS NULL)", name="voided_pair"),
+        # Migración 0044 (S9-V7b, L1): el orden temporal, como en `personal_records`.
+        CheckConstraint(
+            "voided_at IS NULL OR voided_at >= created_at", name="voided_after_created"
+        ),
+        CheckConstraint("updated_at >= created_at", name="updated_after_created"),
         Index(
             "ix_body_metrics_member_date",
             "member_id",

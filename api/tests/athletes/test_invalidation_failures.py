@@ -27,7 +27,7 @@ from app.core.audit_verify import run_verification
 from app.core.clock import FrozenClock
 from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.security import create_access_token
-from app.modules.athletes import derive
+from app.modules.athletes import alerts, derive
 from app.modules.results import service as results_service
 from app.modules.results.events import WodResultRecorded
 from tests.athletes._apoyo import auditoria_de_records
@@ -244,7 +244,7 @@ async def test_una_alerta_que_falla_al_reponer_no_revierte_la_correccion(
         llamadas.append(codigo)
         raise ValueError("la alerta falló")
 
-    monkeypatch.setattr(derive, "alert", alerta_registrada)
+    monkeypatch.setattr(alerts, "alert", alerta_registrada)
 
     await cargar(session, e, w_b, 92_000, anterior_id=malo_id)
 

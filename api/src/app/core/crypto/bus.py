@@ -79,7 +79,12 @@ def encrypt(data_class: str, plaintext: bytes, aad: bytes, *, record_id: UUID | 
 
 
 def decrypt(
-    blob: str, aad: bytes, *, purpose: str | None = None, record_id: UUID | None = None
+    blob: str,
+    aad: bytes,
+    *,
+    purpose: str | None = None,
+    record_id: UUID | None = None,
+    expect_class: str | None = None,
 ) -> bytes:
     partes = parse_blob(blob)
     llave = current_keyring().get(partes.key_id)
@@ -88,6 +93,19 @@ def decrypt(
     if llave.state == "retired":
         raise CryptoError("key_retired", "el blob está cifrado con una llave retirada")
     quien = _record_id_from_aad(aad, record_id)
+    if expect_class is not None and llave.data_class != expect_class:
+        # S9-V7b (L-3): el blob es de OTRA clase de dato; no se abre y el error es opaco (sin la
+        # clase real). Una llave `decrypt_only` de la MISMA clase (rotación) sigue valiendo.
+        oplog.record(
+            "decrypt",
+            data_class=llave.data_class,
+            key_id=llave.key_id,
+            key_version=llave.version,
+            record_id=quien,
+            purpose=purpose,
+            result="error",
+        )
+        raise CryptoError("class_mismatch", "el blob no corresponde a esta columna")
     try:
         claro = open_(llave.material, partes.nonce, partes.ciphertext, aad)
     except CryptoError:

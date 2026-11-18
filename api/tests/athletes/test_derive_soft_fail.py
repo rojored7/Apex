@@ -30,7 +30,7 @@ from app.core.context import SYSTEM_USER_ID, actor_scope
 from app.core.crypto.local_provider import LocalFileProvider
 from app.core.crypto.provider import configure_provider
 from app.core.security import create_access_token, register_principal_loader
-from app.modules.athletes import derive
+from app.modules.athletes import alerts
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.results.events import WodResultRecorded
 from tests.athletes._apoyo_derivar import (
@@ -119,7 +119,7 @@ async def test_una_alerta_que_falla_no_revierte_el_resultado(
         llamadas.append(codigo)
         raise ValueError("la alerta falló")
 
-    monkeypatch.setattr(derive, "alert", alerta_rota)
+    monkeypatch.setattr(alerts, "alert", alerta_rota)
 
     r = await poner(app_http, h, e, load_g=100_000)
 

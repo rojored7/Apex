@@ -64,7 +64,17 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     # S5-B6 (S5-D23): `rules`, `templates` y `rules_crud` son privados. S5-B7 suma `generate`,
     # `queries`, `whatsapp`, `sending` y `events`; el paquete `channels/` cuelga de `sending`.
     "notifications": frozenset(
-        {"rules", "templates", "rules_crud", "generate", "queries", "whatsapp", "sending", "events"}
+        {
+            "rules",
+            "templates",
+            "rules_crud",
+            "generate",
+            "queries",
+            "whatsapp",
+            "sending",
+            "sending_queries",
+            "events",
+        }
     ),
     # S6-C1 (S6-D60): `attachments` nace partido tras la fachada `service.py`; `storage` es un
     # paquete (`storage/`), el resto son archivos.
@@ -97,7 +107,10 @@ PRIVATE_HELPERS: Final[dict[str, frozenset[str]]] = {
     "tv": frozenset({"rules"}),  # S8-C2
     # S9-A1 (S9-D20): `athletes` nace partido tras la fachada; B1, B3 y C1 suman `records`,
     # `derive` y `reads` cuando crean el archivo.
-    "athletes": frozenset({"rules", "metrics", "records", "events", "derive", "reads"}),
+    # S9-V7b (M3, L5): `queries` (consultas compartidas de récords) y `alerts` (`safe_alert`).
+    "athletes": frozenset(
+        {"rules", "metrics", "records", "events", "derive", "reads", "queries", "alerts"}
+    ),
 }
 
 Rule = Literal[

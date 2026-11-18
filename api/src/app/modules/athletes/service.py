@@ -38,11 +38,9 @@ class _RecordsProbe:
         return await _has_live(session, PersonalRecord.benchmark_id == benchmark_id)
 
 
-async def rederive_member(
-    session: AsyncSession, member_id: UUID, *, strict: bool
-) -> RederiveResult:
+async def rederive_member(session: AsyncSession, member_id: UUID) -> RederiveResult:
     """Deriva los récords que falten de un socio (S9-D21): ver `derive.rederive_member`."""
-    return await derive.rederive_member(session, member_id, strict=strict)
+    return await derive.rederive_member(session, member_id)
 
 
 records_probe = _RecordsProbe()

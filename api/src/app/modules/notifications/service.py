@@ -107,7 +107,7 @@ __all__ = [
     "get",
     "get_rule",
     "get_template",
-    "list",
+    "list_",
     "list_for_member",
     "list_rules",
     "list_templates",
@@ -243,7 +243,7 @@ async def get(session: AsyncSession, notification_id: UUID) -> NotificationOut:
     )
 
 
-async def list(
+async def list_(
     session: AsyncSession, filters: NotificationFilters, page: PageParams
 ) -> Page[NotificationOut]:
     """El historial con `can_whatsapp` (S9-X1)."""

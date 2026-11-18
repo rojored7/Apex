@@ -2,7 +2,7 @@
 
 Deriva los récords de los resultados anteriores a v0.6 (y repara los que un fallo blando dejó sin
 derivar). Por socio vivo (lotes de 200 por id): UNA transacción, `lock_member` primero y
-`athletes.service.rederive_member(strict=True)`, que recorre TODAS sus marcas (sin topes).
+`athletes.service.rederive_member()`, que recorre TODAS sus marcas (sin topes).
 Idempotente, auditado (un `insert` por récord y una fila resumen solo con conteos), sin
 `PersonalRecordSet`. Puede crear históricos; el vigente de cada objetivo queda en el máximo real.
 
@@ -45,7 +45,7 @@ from app.core.locks import lock_member
 COMMAND = "derive-records"
 BATCH_SIZE: Final = 200
 BUSY_ATTEMPTS: Final = 3
-BUSY_WAIT_S: float = 1.0
+BUSY_WAIT_S: Final = 1.0
 AUDIT_TABLE: Final = "athletes.personal_records"
 logger = logging.getLogger("app.athletes")
 
@@ -74,7 +74,12 @@ def _is_busy(error: BaseException) -> bool:
 
 
 async def _one_member(
-    session: AsyncSession, member_id: UUID, *, dry_run: bool, summary: Summary
+    session: AsyncSession,
+    member_id: UUID,
+    *,
+    dry_run: bool,
+    summary: Summary,
+    busy_wait_s: float = BUSY_WAIT_S,
 ) -> None:
     """Una transacción por socio, con reintento de «base ocupada»; actualiza `summary`."""
     from app.modules.athletes import service as athletes_service
@@ -83,7 +88,7 @@ async def _one_member(
         transaccion = await session.begin()
         try:
             await lock_member(session, member_id)
-            resultado = await athletes_service.rederive_member(session, member_id, strict=True)
+            resultado = await athletes_service.rederive_member(session, member_id)
             if dry_run:
                 await transaccion.rollback()
             else:
@@ -94,7 +99,7 @@ async def _one_member(
                 raise
             if _is_busy(error):
                 if intento < BUSY_ATTEMPTS:
-                    await asyncio.sleep(BUSY_WAIT_S)
+                    await asyncio.sleep(busy_wait_s)
                     continue
                 summary.ocupados += 1
                 return
@@ -113,6 +118,7 @@ async def _derive(
     actor_email: str | None,
     dry_run: bool,
     summary: Summary,
+    busy_wait_s: float = BUSY_WAIT_S,
 ) -> None:
     from app.modules.members import service as members_service
     from app.modules.results import service as results_service
@@ -136,7 +142,13 @@ async def _derive(
                     break
                 for member_id in (i for i in ids if i in vivos):
                     summary.socios += 1
-                    await _one_member(session, member_id, dry_run=dry_run, summary=summary)
+                    await _one_member(
+                        session,
+                        member_id,
+                        dry_run=dry_run,
+                        summary=summary,
+                        busy_wait_s=busy_wait_s,
+                    )
                 despues = ids[-1]
             if not dry_run:
                 async with session.begin():

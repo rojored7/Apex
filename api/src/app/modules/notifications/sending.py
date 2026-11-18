@@ -56,14 +56,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import events
 from app.core.clock import current_clock
@@ -83,15 +83,19 @@ from app.modules.notifications.events import (
     NotificationSkipped,
 )
 from app.modules.notifications.models import ERROR_CODES, Notification
-from app.modules.notifications.queries import PENDING_WINDOW_DAYS
 from app.modules.notifications.schemas import SendResult
+from app.modules.notifications.sending_queries import (
+    SessionFactory,
+    count_eligible,
+    eligible_ids,
+    lock_eligible,
+)
 from app.modules.settings import service as settings_service
 from app.modules.settings.schemas import ChannelsSettings, SectionKey
 
 logger = logging.getLogger("app.notifications")
 
 LoadContact = Callable[[AsyncSession, UUID], Awaitable[Contact]]
-SessionFactory = async_sessionmaker[AsyncSession]
 
 NOTIFY_MAX_ATTEMPTS: Final = 3
 """Intentos por aviso `email` (S5-D35): al tercero fallido queda `failed` para siempre."""
@@ -238,69 +242,12 @@ async def _tx(sf: SessionFactory) -> AsyncIterator[AsyncSession]:
             yield session
 
 
-def _eligible(today: date, max_attempts: int) -> ColumnElement[bool]:
-    return and_(
-        Notification.channel == "email",
-        Notification.attempts < max_attempts,
-        or_(
-            and_(
-                Notification.status == "pending",
-                Notification.target_date <= today,
-                Notification.target_date >= today - timedelta(days=PENDING_WINDOW_DAYS),
-            ),
-            and_(Notification.status == "failed", Notification.target_date <= today),
-        ),
-    )
-
-
-async def _eligible_ids(
-    sf: SessionFactory, today: date, max_attempts: int
-) -> list[tuple[UUID, int]]:
-    """`(id, attempts)` de lo elegible: `attempts` es la versión que `_lock_eligible` exige."""
-    async with sf() as session:
-        filas = await session.execute(
-            select(Notification.id, Notification.attempts)
-            .where(_eligible(today, max_attempts))
-            .order_by(Notification.target_date, Notification.created_at, Notification.id)
-        )
-        return [(fila.id, fila.attempts) for fila in filas]
-
-
-async def _count_eligible(sf: SessionFactory, today: date, max_attempts: int) -> int:
-    async with sf() as session:
-        total = await session.scalar(
-            select(func.count()).select_from(Notification).where(_eligible(today, max_attempts))
-        )
-    return int(total or 0)
-
-
 async def _channels_config(sf: SessionFactory) -> ChannelsSettings:
     async with sf() as session:
         valor = await settings_service.get(session, SectionKey.channels)
     if not isinstance(valor, ChannelsSettings):
         raise TypeError("channels")
     return valor
-
-
-async def _lock_eligible(
-    session: AsyncSession,
-    notification_id: UUID,
-    expected_attempts: int,
-    today: date,
-    max_attempts: int,
-) -> Notification | None:
-    """La fila, si sigue elegible, nadie más la tiene (`SKIP LOCKED`) y ninguna otra pasada ya
-    contó un intento (`attempts == expected_attempts`, S9-D44); `None` si no."""
-    return await session.scalar(
-        select(Notification)
-        .where(
-            Notification.id == notification_id,
-            Notification.attempts == expected_attempts,
-            _eligible(today, max_attempts),
-        )
-        .with_for_update(skip_locked=True)
-        .execution_options(populate_existing=True)
-    )
 
 
 async def _close_as_skipped(session: AsyncSession, aviso: Notification, reason: str) -> None:
@@ -327,7 +274,7 @@ async def _skip(
 ) -> str:
     """Omite el aviso sin descifrar nada (canal apagado o sin credenciales)."""
     async with _tx(sf) as session:
-        aviso = await _lock_eligible(
+        aviso = await lock_eligible(
             session, notification_id, expected_attempts, today, max_attempts
         )
         if aviso is None:
@@ -384,7 +331,7 @@ async def _prepare(
 ) -> _Prepared | str:
     """Fase (a): candado, contacto y `attempts += 1`, todo confirmado antes de enviar."""
     async with _tx(sf) as session:
-        aviso = await _lock_eligible(
+        aviso = await lock_eligible(
             session, notification_id, expected_attempts, today, max_attempts
         )
         if aviso is None:
@@ -655,7 +602,7 @@ async def _mark_failed(
     con el intento contado, para que acumule hasta el tope y no bloquee la cola (S5-D230)."""
     try:
         async with _tx(sf) as session:
-            aviso = await _lock_eligible(
+            aviso = await lock_eligible(
                 session, notification_id, expected_attempts, today, max_attempts
             )
             if aviso is None:
@@ -766,7 +713,7 @@ async def send_pending(
     soft_deadline_s: float = NOTIFY_SOFT_DEADLINE_S,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> SendResult:
-    ids = await _eligible_ids(session_factory, today, max_attempts)
+    ids = await eligible_ids(session_factory, today, max_attempts)
     if not ids:
         return SendResult(enviados=0, fallidos=0, omitidos=0, pendientes=0)
     config = await _channels_config(session_factory)
@@ -794,7 +741,7 @@ async def send_pending(
         enviados=conteos[SENT],
         fallidos=conteos[FAILED],
         omitidos=conteos[SKIPPED],
-        pendientes=await _count_eligible(session_factory, today, max_attempts),
+        pendientes=await count_eligible(session_factory, today, max_attempts),
         sin_credenciales=sin_credenciales,
         sin_conexion=conteos[NO_CONNECTION],
     )

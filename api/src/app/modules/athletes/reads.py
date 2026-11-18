@@ -15,23 +15,24 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from datetime import date
-from typing import Any, Final
+from datetime import date, datetime
+from typing import Any, Final, NamedTuple, Protocol
 from uuid import UUID
 
 from sqlalchemy import Select, func, select, union_all
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.alerts import alert
 from app.core.pagination import Page, PageParams, to_page
 from app.core.search import clean_query, strip_accents
+from app.modules.athletes.alerts import safe_alert
 from app.modules.athletes.models import BodyMetric, PersonalRecord
-from app.modules.athletes.records import KIND_SQL
+from app.modules.athletes.queries import KIND_SQL
 from app.modules.athletes.rules import (
     Attempt,
     BenchmarkSummary,
     RecordRow,
+    as_kind,
     summarize_benchmarks,
     summarize_records,
 )
@@ -100,10 +101,7 @@ def _warn_capped(member_id: UUID, marcas: int) -> None:
         "athletes: lista de benchmarks al tope de marcas",
         extra={"member_id": str(member_id), "marcas": marcas},
     )
-    try:
-        alert("athletes_restore_capped", marcas=marcas)
-    except Exception as error:
-        logger.warning("athletes: alerta omitida", extra={"error_type": type(error).__name__})
+    safe_alert("athletes_restore_capped", marcas=marcas)
 
 
 async def list_benchmarks(
@@ -188,6 +186,26 @@ _SUMMARY_COLUMNS: Final = (
 )
 
 
+class _SummaryRow(NamedTuple):
+    """Una fila del resumen con los nombres de `_SUMMARY_COLUMNS` (S9-V7b, M2: sin `Any`)."""
+
+    id: UUID
+    kind: str
+    movement_id: UUID | None
+    benchmark_id: UUID | None
+    value_g: int | None
+    level: str | None
+    seconds: int | None
+    rounds: int | None
+    reps: int | None
+    load_g: int | None
+    capped: bool
+    achieved_on: date
+    created_at: datetime
+    source: str
+    wod_id: UUID | None
+
+
 def current_rms_query(member_id: UUID, *columns: Any) -> Select[Any]:
     """Un RM vigente por movimiento: `DISTINCT ON (movement_id)` con el orden de `pick_current`
     (mayor `value_g`, `achieved_on`, `created_at` e id más antiguos). `kind` literal y
@@ -211,7 +229,17 @@ def current_rms_query(member_id: UUID, *columns: Any) -> Select[Any]:
     )
 
 
-def _drop_rms_without_value(filas: Sequence[Any]) -> list[Any]:
+class _RmCandidate(Protocol):
+    """Lo que `_drop_rms_without_value` mira de una fila (entidad ORM o `_SummaryRow`)."""
+
+    @property
+    def movement_id(self) -> UUID | None: ...
+
+    @property
+    def value_g(self) -> int | None: ...
+
+
+def _drop_rms_without_value[R: _RmCandidate](filas: Sequence[R]) -> list[R]:
     """L-5: un RM sin movimiento o sin valor no se muestra como 0 g: se omite y se avisa (el CHECK
     `rm_shape` lo impide; esto es defensa)."""
     buenas = [f for f in filas if f.movement_id is not None and f.value_g is not None]
@@ -276,13 +304,10 @@ def _warn_summary_capped(member_id: UUID, filas: int, origen: str) -> None:
         "athletes: resumen al tope de lectura",
         extra={"member_id": str(member_id), "origen": origen, "filas": filas},
     )
-    try:
-        alert("athletes_summary_capped", marcas=filas)
-    except Exception as error:
-        logger.warning("athletes: alerta omitida", extra={"error_type": type(error).__name__})
+    safe_alert("athletes_summary_capped", marcas=filas)
 
 
-async def _records_rows(session: AsyncSession, member_id: UUID) -> list[Any]:
+async def _records_rows(session: AsyncSession, member_id: UUID) -> list[_SummaryRow]:
     """UNA consulta: un RM vigente por movimiento (SQL, sin tope) y los récords de benchmark vivos
     (en memoria, con tope `LIVE_RECORDS_MAX`), solo con las columnas que el resumen usa."""
     rm = current_rms_query(member_id, *_SUMMARY_COLUMNS).subquery("rm")
@@ -301,13 +326,14 @@ async def _records_rows(session: AsyncSession, member_id: UUID) -> list[Any]:
         .limit(LIVE_RECORDS_MAX)
         .subquery("bm")
     )
-    return list((await session.execute(union_all(select(rm), select(benchmarks)))).all())
+    filas = (await session.execute(union_all(select(rm), select(benchmarks)))).all()
+    return [_SummaryRow(**fila._asdict()) for fila in filas]
 
 
-def _record_row(f: Any) -> RecordRow:
+def _record_row(f: _SummaryRow) -> RecordRow:
     return RecordRow(
         id=f.id,
-        kind=f.kind,
+        kind=as_kind(f.kind),
         movement_id=f.movement_id,
         benchmark_id=f.benchmark_id,
         value_g=f.value_g,
@@ -349,7 +375,7 @@ def _summary_record(
 
 async def _split_records(
     session: AsyncSession, member_id: UUID
-) -> tuple[list[Any], list[Any], bool]:
+) -> tuple[list[_SummaryRow], list[_SummaryRow], bool]:
     """RM vigentes y benchmarks vivos; con el tope alcanzado, avisa y devuelve ningún benchmark."""
     filas = await _records_rows(session, member_id)
     rms = _drop_rms_without_value([f for f in filas if f.kind == "rm"])
@@ -397,7 +423,7 @@ async def summary(session: AsyncSession, member_id: UUID) -> AthleteSummaryOut:
     return AthleteSummaryOut(
         last_metric_on=ultima,
         metrics_count=cuantas,
-        current_rms=len(rms),
+        current_rms=digest.current_rms,
         benchmarks_with_attempts=len({m.benchmark_id for m in marcas if m.benchmark_id}),
         recent_records=salida,
         truncated=truncado,

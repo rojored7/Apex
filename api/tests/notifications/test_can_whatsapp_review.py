@@ -134,7 +134,7 @@ async def test_l3_lecturas_no_dejan_filas_en_crypto_ops_ni_auditoria_y_wa_link_s
     _, aviso = await _aviso(session)
     antes = await _conteos(session)
 
-    await service.list(session, NotificationFilters(), PAGINA)
+    await service.list_(session, NotificationFilters(), PAGINA)
     await service.get(session, aviso.id)
     await service.today_list(session, HOY, PAGINA, None)
     assert await _conteos(session) == antes

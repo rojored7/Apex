@@ -90,7 +90,8 @@ async def test_el_admin_anula_y_recibe_la_medicion_anulada_sin_valores(
     cuerpo = r.json()
     assert set(cuerpo) == CAMPOS
     assert cuerpo["id"] == str(metric_id)
-    assert datetime.fromisoformat(cuerpo["voided_at"]) == reloj.now_utc()
+    # S9-V7b (L1): la hora es la de la base (real), no la del reloj congelado de la aplicación.
+    assert datetime.fromisoformat(cuerpo["voided_at"]) >= reloj.now_utc()
     assert cuerpo["has_weight"] is True
     assert r.headers["cache-control"] == "no-store"
     assert "62500" not in r.text

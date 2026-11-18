@@ -66,7 +66,8 @@ async def test_anular_llena_voided_at_y_voided_by_y_devuelve_la_medicion_anulada
     salida = await anular(session, admin.id, member_id, metric_id)
 
     assert salida.id == metric_id
-    assert salida.voided_at == reloj.now_utc()
+    assert salida.voided_at is not None
+    assert salida.voided_at >= antes["created_at"]  # reloj de la base (L1)
     assert (salida.has_weight, salida.has_height, salida.has_body_fat, salida.has_notes) == (
         True,
         True,
@@ -74,7 +75,7 @@ async def test_anular_llena_voided_at_y_voided_by_y_devuelve_la_medicion_anulada
         True,
     )
     despues = await fila_cruda(session, metric_id)
-    assert despues["voided_at"] == reloj.now_utc()
+    assert despues["voided_at"] == salida.voided_at
     assert despues["voided_by"] == admin.id
     # No se borra ni se recifra: los cuatro blobs quedan idénticos.
     for campo in ("weight_g", "height_cm", "body_fat_pct", "notes"):

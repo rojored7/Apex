@@ -16,7 +16,7 @@ import logging
 from typing import Final, Literal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import audit
@@ -35,6 +35,7 @@ from app.modules.athletes.exceptions import (
 )
 from app.modules.athletes.models import BodyMetric
 from app.modules.athletes.rules import (
+    ADMIN_ROLE,
     METRIC_FIELDS,
     can_void,
     decode_metric,
@@ -48,7 +49,6 @@ from app.modules.members import service as members_service
 logger = logging.getLogger("app.athletes")
 
 REVEAL_PURPOSE: Final = "reveal"
-ADMIN_ROLE: Final = "admin"
 METRICS_TABLE: Final = "athletes.body_metrics"
 
 
@@ -220,13 +220,12 @@ async def void_metric(
     )
     if metric is None:
         raise MetricNotFound()
-    ahora = current_clock().now_utc()
     if not can_void(
         role=role,
         caller=by,
         recorded_by=metric.recorded_by,
         created_at=metric.created_at,
-        now=ahora,
+        now=current_clock().now_utc(),
     ):
         # M-3: el 403 no deja fila de auditoría; el aviso lleva usuario y medición (S9-D35), sin
         # socio, campo ni valores.
@@ -237,7 +236,9 @@ async def void_metric(
         raise ForbiddenError()
     if metric.voided_at is not None:
         raise MetricAlreadyVoided()
-    metric.voided_at = ahora
+    # S9-D52 (L1): la hora de la anulación es la de la BASE (`clock_timestamp()`), nunca la del
+    # reloj de la aplicación: uno atrasado dejaría `voided_at < created_at` (CHECK de la 0044).
+    metric.voided_at = (await session.execute(select(func.clock_timestamp()))).scalar_one()
     metric.voided_by = by
     await session.flush()
     logger.info("athletes: medición anulada", extra={"metric_id": str(metric.id)})

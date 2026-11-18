@@ -891,3 +891,24 @@ Solo documentación. Comprobado en código: `athletes/metrics.py` (baja, 403 al 
 - **L-1**: `atleta.md` y `RUNBOOK.md:358` y §15: `GET /api/v1/audit?action=reveal&table=athletes.body_metrics` y pantalla Auditoría.
 - **L-2**: `atleta.md` y RUNBOOK §15: deduplicación de 60 s; correr `derive-records` completo.
 - No comprobado en ejecución: que la pantalla Auditoría ofrezca el filtro por acción en la interfaz (sí lo hace el contrato de `GET /audit`).
+
+## S9-V7b · Correcciones de backend de la revisión de Fase 4
+
+Bandera `apex-migracion.flag` tomada y `api` y `worker` parados antes de escribir. Volcado previo `docs/scratch/sprint-09-antes-0044.dump` (ignorado). Consulta de solo lectura en `apex-db-1` antes de la 0044: 16 mediciones, 0 con `voided_at < created_at`, 0 con `updated_at < created_at`; cabeza 0043.
+
+Rojo (pruebas nuevas contra el `src` de HEAD, copiado con `git archive` al scratchpad y `PYTHONPATH`): `tests/athletes/test_v7b_revision_back.py`, `tests/crypto/test_types_reveal_class.py` y `tests/migrations/test_0044_body_metrics_time_checks.py` = 12 failed, 9 passed. Fallos: `strict` aún en la firma (M1), `_SummaryRow` inexistente (M2), `queries` inexistente y import perezoso (M3), `Objective`/`RecordKind`/`alerts` inexistentes (L4/L5), `BUSY_WAIT_S` sin `Final` ni parámetro (L9), `list_` inexistente (L10), anulación con reloj atrasado deja `voided_at < created_at` (L1), plan de `result_ids_with_record`, y las tres de `reveal` (L-3: sin `class_mismatch`). Pasaron en rojo las que leen archivos del árbol actual (tamaño de `sending.py`, orden en `ratelimit.py`) y las de la 0044 (la migración ya estaba escrita).
+
+Hallazgo -> arreglo:
+- M1: `rederive_member(session, member_id)` sin `strict` (`derive.py`, `service.py`, `cli_ops/derive_records.py`); pruebas ajustadas.
+- M2: `reads._SummaryRow` (`NamedTuple`) y `_drop_rms_without_value` genérica con `Protocol`.
+- M3: `athletes/queries.py` (KIND_SQL, row_of, current_query, current_rm, current_benchmark, result_ids_with_record); `records.py` importa `derive` arriba, sin import perezoso. `PRIVATE_HELPERS` y `CLAUDE.md` actualizados.
+- L4: `RecordKind`, `Objective` (reemplaza `_Objective` y `_Target`), `as_kind`. L5: `_score_of`, `alerts.safe_alert`, `ADMIN_ROLE` solo en `rules.py`. L6: `reads` usa `digest.current_rms`.
+- L7: `notifications/sending_queries.py` (elegibilidad y `lock_eligible`); `sending.py` 800 -> 747 líneas. L8: `REVEAL_ALERT_WINDOW_S` antes de su uso. L9: `BUSY_WAIT_S: Final`, `busy_wait_s` parámetro de `_one_member` y `_derive`. L10: `service.list_` (sin alias `list`: taparía el builtin).
+- L1: `void_metric` usa `clock_timestamp()`; migración `0044_body_metrics_time_checks` (CHECK `voided_after_created` y `updated_after_created`); modelo espejo.
+- L3: prueba de plan de `_invalidate` usa `uq_personal_records_result_kind`; la de `result_ids_with_record` mostró que el plan genérico usa `ix_personal_records_member_date` (la revisión suponía el uq): se fijó lo medido (índice, sin Seq Scan) y la docstring lo dice.
+- L4 grants: comentario 32 tablas y gemelo de lectura de `apex_backup` en `body_metrics`. L5 reown: `reown.sql` con los 15 esquemas y prueba contra `grants.sql`.
+- L-3: `bus.decrypt(expect_class=...)`, `types.reveal` lo pasa; `CryptoError("class_mismatch")` opaco con fila `decrypt`/`error` en `crypto_ops`; la llave `decrypt_only` de la misma clase sigue valiendo.
+
+Verde: `tests/migrations` + `tests/core/test_migrations.py` 1460 passed (exit 0); gate `core/ratelimit` verde; gates `notifications` (1494 passed) y `crypto` (1782 passed, 63 skipped) con solo un fallo de arquitectura (`test_los_privados_de_notifications_son_los_de_b7`, esperaba el conjunto viejo), corregido.
+
+Gates sellantes: `cli` (con `tests/cli/test_derive_records.py`) exit 0. `athletes` (1648 pruebas + arquitectura): primera corrida 1 failed, 1647 passed por `test_router_void_metric` (esperaba `voided_at == reloj`; ahora es la hora de la base), corregida; el gate final se repite sobre ese árbol.

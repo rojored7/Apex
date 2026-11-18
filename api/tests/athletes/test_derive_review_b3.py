@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import events
 from app.core.db import DatabaseBusy
 from app.core.events import EventDepthExceeded
-from app.modules.athletes import derive, records
+from app.modules.athletes import derive, queries
 from app.modules.athletes.events import PersonalRecordSet
 from app.modules.results.events import WodResultValidated
 from app.modules.wods import service as wods_service
@@ -285,7 +285,7 @@ async def _plan_generico(session: AsyncSession, sql: str, parametros: int) -> st
 
 async def test_plan_de_current_rm_usa_ix_personal_records_rm(session: AsyncSession) -> None:
     with capturar_sql(session, "athletes.personal_records") as vistas:
-        await records.current_rm(session, uuid4(), uuid4())
+        await queries.current_rm(session, uuid4(), uuid4())
     sql, parametros = vistas[0]
 
     plan = await _plan_generico(session, sql, len(parametros))

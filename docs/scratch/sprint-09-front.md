@@ -193,3 +193,8 @@ Rojo medido antes de corregir: 18 pruebas nuevas en rojo (7 archivos); las de 42
 **Verde E2E:** P-REBUILD 3 desde el worktree (build exit 0). Primera corrida doble: corrida 1, 2 passed; corrida 2, el caso del derivado falló en `POST /class-sessions` (409 `session_duplicate`). Causa: la clase de la corrida 1 tiene resultados, no se puede cancelar (409 `locked_by_results`, por diseño) y sigue «programada» en el mismo minuto. Arreglo del orquestador en la spec: `crearClaseDeHoy` prueba el minuto siguiente ante `session_duplicate` (hasta 5), y cualquier otro error falla. Después, corrida 1: 2 passed (4,4 s); corrida 2: 2 passed (4,5 s); exit 0 las dos.
 **Regresión sobre la imagen de F2:** `athlete-profile.spec.ts` y `kiosk-idle.spec.ts`: 4 passed. `.env` restaurado en cada corrida.
 **Datos que quedan en desarrollo (ficticios):** clases «Récords E2E …» de hoy con su resultado (no se cancelan por diseño; terminan solas), WODs de 2033, socios ficticios dados de baja, y el récord manual invalidado del caso 2.
+
+### Sello y evidencia
+
+- Gate sellante `slice-gate.sh web/athletes` (RmsTab, RecordsTab, RecordPanel): 119 passed, exit 0. No sellantes del Verde (`web/shared`, `web/wods`, `web/results`): exit 0.
+- Checkpoint `2a1c1f0`.

@@ -920,4 +920,4 @@ Gates sellantes: `cli` (con `tests/cli/test_derive_records.py`) exit 0. `athlete
 - web: 278 archivos, 5019 pruebas en verde; cobertura 95,98 % de líneas; build en 3,80 s.
 - El envoltorio de la corrida lo detuvo el sistema por poca memoria, pero `run-gates.sh` siguió vivo y terminó solo (se esperó su última línea).
 - Después de `39a4ef3` entraron `8c8ee8a` (auditorías: opentelemetry-api 1.45.2, gitleaks, fin de archivo) y `a03840f` (scripts de V3, sin correr aún).
-- Pendiente de V1: ciclo de Alembic `0001 -> 0044` arriba y abajo en `db_test`.
+- Ciclo de Alembic sobre `d5da64e` (con `uv sync`, opentelemetry-api 1.45.2): `tests/core/test_migrations.py` 5 passed contra `db_test` (`upgrade head`, `downgrade base` con la base vacía y vuelta a `head`, una sola cabeza); `alembic heads` = `0044_body_metrics_time_checks (head)`. V1 cerrado.

@@ -33,6 +33,8 @@ export interface TabsProps {
   indexId?: string;
   /** S9-F1 (E7): `underline` (por defecto) o `pills` (subpestañas del atleta); solo cambia la presentación, no la semántica. */
   variant?: "underline" | "pills";
+  /** Revisión S9-F2: parámetros de la URL propios de la subpestaña (los filtros de su lista); se borran al cambiar de subpestaña. */
+  ownParams?: readonly string[];
   children: (activeId: string) => ReactNode;
 }
 
@@ -41,7 +43,7 @@ function segmentAfter(pathname: string, basePath: string): string | null {
   return pathname.slice(basePath.length + 1).split("/")[0] ?? null;
 }
 
-export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", indexId, variant = "underline", children }: TabsProps) {
+export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", indexId, variant = "underline", ownParams = [], children }: TabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -78,6 +80,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
         next.set(param, id);
         // Una pestaña con su propia lista empieza en la primera página.
         next.delete("offset");
+        for (const own of ownParams) next.delete(own);
         return next;
       });
     } else {
@@ -86,6 +89,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
       // (la ficha tiene dos listas paginadas, Membresías y Pagos); lo demás de la URL se conserva.
       const next = new URLSearchParams(location.search);
       next.delete("offset");
+      for (const own of ownParams) next.delete(own);
       // L5 (S9-F1): `?tab=` es de las subpestañas de una hija (Atleta); no se arrastra a las demás pestañas de la ficha.
       next.delete(param);
       const query = next.toString();

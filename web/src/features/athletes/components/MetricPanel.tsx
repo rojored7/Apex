@@ -16,7 +16,7 @@ import { SidePanel } from "../../../shared/ui/SidePanel";
 import { useAddMetric } from "../api";
 import { METRIC_ERROR_MESSAGES, fieldErrorOf, isConsentRequired, metricSaveError } from "../athleteErrors";
 import { EMPTY_METRIC_FORM, metricFormSchema, parseMetricForm, type MetricFormValues } from "../schemas";
-import styles from "./MetricPanel.module.css";
+import styles from "./AthletePanel.module.css";
 
 export interface MetricPanelProps {
   open: boolean;

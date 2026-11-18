@@ -1,5 +1,5 @@
 // S8-F1 · US-165 y US-166 (front): catálogo de movimientos y benchmarks.
-// - movementSchema y benchmarkSchema validan las respuestas (CatalogMovementOut y BenchmarkOut del contrato).
+// - movementSchema y benchmarkSchema (reexportados de shared/data/catalog) validan las respuestas (CatalogMovementOut y BenchmarkOut).
 // - movementFormSchema y benchmarkFormSchema: mismas reglas que el api (nombre de 1 a 60, descripción hasta 2.000).
 // - toMovementPatch y toBenchmarkPatch: el PATCH lleva solo lo que cambió (un campo ausente no es un cambio).
 // DESIGN-GAP (S8-D5): Movimientos.html trae alias, la unidad «lb» y «Tipos de récord»; el contrato no los tiene
@@ -7,10 +7,11 @@
 import { z } from "zod";
 import type { components } from "../../core/api/types";
 import { formatCount } from "../../core/i18n/format";
+import { BENCHMARK_SCORE_TYPES, benchmarkSchema, MOVEMENT_CATEGORIES, MOVEMENT_UNITS, movementSchema } from "../../shared/data/catalog";
 
-export const MOVEMENT_CATEGORIES = ["weightlifting", "gymnastics", "monostructural", "other"] as const;
-export const MOVEMENT_UNITS = ["kg", "reps", "m", "cal", "s"] as const;
-export const SCORE_TYPES = ["time", "rounds_reps", "reps", "load"] as const;
+// El contrato de lectura del catálogo vive en shared/data/catalog.ts (S9-F2, E8): una sola fuente para wods y atleta.
+export { benchmarkSchema, movementSchema, MOVEMENT_CATEGORIES, MOVEMENT_UNITS };
+export const SCORE_TYPES = BENCHMARK_SCORE_TYPES;
 
 export type MovementCategory = (typeof MOVEMENT_CATEGORIES)[number];
 export type MovementUnit = (typeof MOVEMENT_UNITS)[number];
@@ -40,27 +41,6 @@ export const SCORE_TYPE_LABELS: Readonly<Record<BenchmarkScoreType, string>> = {
 
 export const NAME_MAX = 60;
 export const DESCRIPTION_MAX = 2000;
-
-export const movementSchema = z.object({
-  id: z.string().min(1),
-  name: z.string(),
-  category: z.enum(MOVEMENT_CATEGORIES),
-  unit: z.enum(MOVEMENT_UNITS),
-  is_active: z.boolean(),
-  wod_count: z.number().int().nonnegative(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-
-export const benchmarkSchema = z.object({
-  id: z.string().min(1),
-  name: z.string(),
-  description: z.string(),
-  score_type: z.enum(SCORE_TYPES),
-  wod_count: z.number().int().nonnegative(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
 
 export const MOVEMENT_MESSAGES = {
   name: "Escribe el nombre del movimiento (hasta 60 caracteres).",

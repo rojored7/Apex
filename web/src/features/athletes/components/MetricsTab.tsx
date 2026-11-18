@@ -10,6 +10,7 @@ import { formatDate } from "../../../core/i18n/format";
 import { useCan } from "../../../core/auth/useCan";
 import { useListParams } from "../../../shared/hooks/useListParams";
 import { Button } from "../../../shared/ui/Button";
+import { cx } from "../../../shared/ui/cx";
 import { ConfirmModal } from "../../../shared/ui/ConfirmModal";
 import { DataTable, type Column } from "../../../shared/ui/DataTable";
 import { Pagination } from "../../../shared/ui/Pagination";
@@ -44,13 +45,13 @@ function buildColumns({ memberId, memberDeleted, canVoid, onVoid }: ColumnsOptio
     {
       key: "measured_on",
       header: "Fecha",
-      render: (row) => <span className={styles.nowrap}>{formatDate(row.measured_on)}</span>,
+      render: (row) => <span className={cx(styles.cell, styles.nowrap)}>{formatDate(row.measured_on)}</span>,
     },
     { key: "weight", header: "Peso", render: (row) => field(row, "weight_g", row.has_weight) },
     { key: "height", header: "Altura", render: (row) => field(row, "height_cm", row.has_height) },
     { key: "body_fat", header: "% grasa", render: (row) => field(row, "body_fat_pct", row.has_body_fat) },
     { key: "notes", header: "Notas", render: (row) => <span className={styles.notes}>{field(row, "notes", row.has_notes)}</span> },
-    { key: "recorded_by", header: "Registró", render: (row) => row.recorded_by_name ?? <span className={styles.muted}>{EMPTY_CELL}</span> },
+    { key: "recorded_by", header: "Registró", render: (row) => <span className={styles.cell}>{row.recorded_by_name ?? <span className={styles.muted}>{EMPTY_CELL}</span>}</span> },
   ];
   if (!canVoid) return columns;
   return [

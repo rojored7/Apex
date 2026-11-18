@@ -1,6 +1,6 @@
 // S8-F3 (S8-D13, S8-D41): marcas y cargas en pantalla. El contrato lleva gramos enteros; la pantalla, kg con hasta dos decimales.
 import { describe, expect, it } from "vitest";
-import { formatLoadKg, formatScore, formatSeconds, formatWeightKg, gramsToKgInput, isScoreKind, kgInputToGrams, LOAD_MAX_G, SCORE_KINDS } from "./score";
+import { formatLoadKg, formatScore, formatScoreDelta, formatSeconds, formatWeightKg, gramsToKgInput, isScoreKind, kgInputToGrams, LOAD_MAX_G, SCORE_KINDS } from "./score";
 
 describe("formatSeconds", () => {
   it("da minutos y segundos con dos cifras", () => {
@@ -80,5 +80,47 @@ describe("isScoreKind", () => {
     for (const kind of SCORE_KINDS) expect(isScoreKind(kind)).toBe(true);
     expect(isScoreKind("distance")).toBe(false);
     expect(isScoreKind(null)).toBe(false);
+  });
+});
+
+// S9-F2 (US-183): la diferencia entre dos marcas del mismo tipo y nivel, con signo (el menos es U+2212, como en el diseño).
+describe("formatScoreDelta", () => {
+  const marks = (overrides: Partial<{ seconds: number | null; rounds: number | null; reps: number | null; load_g: number | null; capped: boolean }>) => ({ seconds: null, rounds: null, reps: null, load_g: null, capped: false, ...overrides });
+
+  it("tiempo: 11:42 contra 12:10 es −0:28 y 12:10 contra 11:05 es +1:05", () => {
+    expect(formatScoreDelta("time", marks({ seconds: 702 }), marks({ seconds: 730 }))).toBe("−0:28");
+    expect(formatScoreDelta("time", marks({ seconds: 730 }), marks({ seconds: 665 }))).toBe("+1:05");
+  });
+
+  it("tiempo: con horas, 1:02:05 de diferencia", () => {
+    expect(formatScoreDelta("time", marks({ seconds: 4000 }), marks({ seconds: 275 }))).toBe("+1:02:05");
+  });
+
+  it("repeticiones: +5 reps y −3 reps", () => {
+    expect(formatScoreDelta("reps", marks({ reps: 45 }), marks({ reps: 40 }))).toBe("+5 reps");
+    expect(formatScoreDelta("reps", marks({ reps: 37 }), marks({ reps: 40 }))).toBe("−3 reps");
+  });
+
+  it("carga: de 100 kg a 102,5 kg es +2,5 kg y de 100 kg a 95 kg es −5 kg", () => {
+    expect(formatScoreDelta("load", marks({ load_g: 102_500 }), marks({ load_g: 100_000 }))).toBe("+2,5 kg");
+    expect(formatScoreDelta("load", marks({ load_g: 95_000 }), marks({ load_g: 100_000 }))).toBe("−5 kg");
+  });
+
+  it("una marca igual dice «Sin cambio» en cada tipo", () => {
+    expect(formatScoreDelta("time", marks({ seconds: 702 }), marks({ seconds: 702 }))).toBe("Sin cambio");
+    expect(formatScoreDelta("reps", marks({ reps: 40 }), marks({ reps: 40 }))).toBe("Sin cambio");
+    expect(formatScoreDelta("load", marks({ load_g: 100_000 }), marks({ load_g: 100_000 }))).toBe("Sin cambio");
+  });
+
+  it("rondas + repeticiones no se compara (falta el tamaño de la ronda) y devuelve null", () => {
+    expect(formatScoreDelta("rounds_reps", marks({ rounds: 5, reps: 12 }), marks({ rounds: 4, reps: 20 }))).toBeNull();
+  });
+
+  it("una marca cortada (DNF), una que falta o un WOD sin marca devuelven null", () => {
+    expect(formatScoreDelta("time", marks({ seconds: 900, reps: 100, capped: true }), marks({ seconds: 702 }))).toBeNull();
+    expect(formatScoreDelta("time", marks({ seconds: 702 }), marks({ seconds: 900, capped: true }))).toBeNull();
+    expect(formatScoreDelta("time", marks({ seconds: null }), marks({ seconds: 702 }))).toBeNull();
+    expect(formatScoreDelta("load", marks({ load_g: 100_000 }), marks({ load_g: null }))).toBeNull();
+    expect(formatScoreDelta("none", marks({}), marks({}))).toBeNull();
   });
 });

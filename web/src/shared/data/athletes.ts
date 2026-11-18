@@ -10,3 +10,10 @@ export const ATHLETE_VIEW_KEYS = [["athlete-summary"], ["athlete-metrics"], ["at
 export function invalidateAthleteViews(queryClient: QueryClient): void {
   for (const queryKey of ATHLETE_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey });
 }
+
+/** Lo que un récord (guardar o invalidar) mueve: resumen, RMs, récords y benchmarks de ESE socio; sus medidas no cambian. */
+const RECORD_VIEW_KEYS = ["athlete-summary", "athlete-rms", "athlete-records", "athlete-benchmarks"] as const;
+
+export function invalidateRecordViews(queryClient: QueryClient, memberId: string): void {
+  for (const name of RECORD_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey: [name, memberId] });
+}

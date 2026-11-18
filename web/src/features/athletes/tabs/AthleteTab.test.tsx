@@ -3,10 +3,10 @@
 // - «+ Registrar medidas» (athletes.write) abre el panel; con el socio dado de baja no hay acciones (la ficha es de solo lectura, N-20).
 // - H-1: si la ficha trae `data_consent_at: null` el botón del panel nace deshabilitado con el enlace a la ficha.
 // - Guardar una medida relee el resumen y la lista (invalidateAthleteViews). Abrir la pestaña nunca pide un reveal.
-// DESIGN-GAP (código): «Registrar RM» y «Exportar progreso» no están en este slice (F2) ni en el contrato.
+// S9-F2: RMs por movimiento y Récords con su contenido, y «+ Registrar récord» (panel RecordPanel). DESIGN-GAP: «Exportar progreso».
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "vitest-axe";
-import { apiError, CLEAR, MEMBER_ID, METRICS_PATH, metric, metricId, pageReply, revealPath, SUMMARY_PATH, summary } from "../../../test/athletes";
+import { apiError, CATALOG_HANDLERS, CLEAR, derivedRm, MEMBER_ID, METRICS_PATH, metric, metricId, movementId, pageReply, record, RECORDS_PATH, revealPath, rm, RMS_PATH, SUMMARY_PATH, summary } from "../../../test/athletes";
 import { DELETED_TAB_MEMBER, TAB_MEMBER, renderMemberTab } from "../../../test/memberTabs";
 import { setViewportWidth, type MockHandler } from "../../../test/server";
 import { signInAs, signOutForTests } from "../../../test/session";
@@ -257,5 +257,140 @@ describe("AthleteTab · revisión", () => {
     expect(await screen.findByText("5 may 2026")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("61,2 kg");
     expect(mock.callsTo(`GET /athletes/${OTHER}/metrics`)).toHaveLength(1);
+  });
+});
+
+// S9-F2 · US-180 a US-182: las subpestañas RMs y Récords ya no son «llega en la siguiente entrega» y «+ Registrar récord» abre el panel.
+describe("AthleteTab · RMs y Récords (S9-F2)", () => {
+  const RMS_LIST = `GET ${RMS_PATH}`;
+  const RECORDS_LIST = `GET ${RECORDS_PATH}`;
+  const RECORD_POST = `POST ${RECORDS_PATH}`;
+  const COMING_SOON = "Esta sección llega en la siguiente entrega del perfil del atleta.";
+  const extra = (): Record<string, MockHandler> => ({
+    ...CATALOG_HANDLERS,
+    [RMS_LIST]: (call) => pageReply(call, [rm(1)]),
+    [RECORDS_LIST]: (call) => pageReply(call, [record(1), derivedRm(2)]),
+    [RECORD_POST]: { status: 201, body: record(9) },
+  });
+  const registerRecord = () => screen.getByRole("button", { name: /Registrar récord/ });
+
+  it("?tab=rms monta la lista de RMs con su petición y ya no dice «llega en la siguiente entrega»", async () => {
+    const { mock } = renderTab(`${BASE}?tab=rms`, extra());
+
+    expect(await screen.findByRole("table", { name: "RMs por movimiento del socio" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "RMs por movimiento" })).toHaveAttribute("aria-selected", "true");
+    expect(mock.callsTo(RMS_LIST)).toHaveLength(1);
+    expect(mock.callsTo(SUMMARY)).toHaveLength(0);
+    expect(screen.queryByText(COMING_SOON)).not.toBeInTheDocument();
+  });
+
+  it("?tab=records monta la lista de récords con sus chips y ya no dice «llega en la siguiente entrega»", async () => {
+    const { mock } = renderTab(`${BASE}?tab=records`, extra());
+
+    expect(await screen.findByRole("table", { name: "Récords del socio" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Tipo de récord" })).toBeInTheDocument();
+    expect(mock.callsTo(RECORDS_LIST)).toHaveLength(1);
+    expect(screen.queryByText(COMING_SOON)).not.toBeInTheDocument();
+  });
+
+  it("Benchmarks sigue pendiente de F3: conserva el aviso de que llega en la siguiente entrega", async () => {
+    renderTab(`${BASE}?tab=benchmarks`, extra());
+
+    expect(await screen.findByText(COMING_SOON)).toBeInTheDocument();
+  });
+
+  it.each(["admin", "coach"] as const)("el %s ve «+ Registrar récord» y abre el panel «Registrar récord»", async (role) => {
+    signInAs(role);
+    const { user } = renderTab(BASE, extra());
+
+    await user.click(await screen.findByRole("button", { name: /Registrar récord/ }));
+
+    expect(screen.getByRole("dialog", { name: "Registrar récord" })).toBeInTheDocument();
+  });
+
+  it("con el socio dado de baja no hay «+ Registrar récord» ni «Invalidar» (la ficha es de solo lectura)", async () => {
+    renderTab(`${BASE}?tab=records`, extra(), { member: DELETED_TAB_MEMBER });
+
+    await screen.findByRole("table", { name: "Récords del socio" });
+    expect(screen.queryByRole("button", { name: /Registrar récord/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Invalidar / })).not.toBeInTheDocument();
+  });
+
+  it("un récord no es dato de salud: sin autorización de datos el botón y el panel siguen disponibles", async () => {
+    const { user } = renderTab(BASE, extra(), { member: WITHOUT_CONSENT });
+
+    await user.click(await screen.findByRole("button", { name: /Registrar récord/ }));
+
+    expect(screen.getByRole("button", { name: "Guardar récord" })).toBeEnabled();
+    expect(screen.queryByText(/autorización de datos/)).not.toBeInTheDocument();
+  });
+
+  it("guardar un RM cierra el panel, avisa «Récord guardado.» en un role=status y relee los RMs", async () => {
+    const { user, mock } = renderTab(`${BASE}?tab=rms`, extra());
+    await screen.findByRole("table", { name: "RMs por movimiento del socio" });
+    await user.click(registerRecord());
+    await screen.findByRole("option", { name: "Back Squat" });
+    await user.selectOptions(screen.getByLabelText(/^Movimiento/), "Back Squat");
+    await user.type(screen.getByLabelText(/^Carga \(kg\)/), "100");
+
+    await user.click(screen.getByRole("button", { name: "Guardar récord" }));
+
+    const notice = await screen.findByText("Récord guardado.");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice.textContent).not.toMatch(/100/);
+    expect(screen.queryByRole("dialog", { name: "Registrar récord" })).not.toBeInTheDocument();
+    expect(mock.callsTo(RECORD_POST)).toHaveLength(1);
+    expect(mock.callsTo(RECORD_POST)[0]?.body).toMatchObject({ kind: "rm", movement_id: movementId(1), value_g: 100_000 });
+    await waitFor(() => {
+      expect(mock.callsTo(RMS_LIST).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("guardar un récord desde Récords relee la lista de récords", async () => {
+    const { user, mock } = renderTab(`${BASE}?tab=records`, extra());
+    await screen.findByRole("table", { name: "Récords del socio" });
+    await user.click(registerRecord());
+    await screen.findByRole("option", { name: "Deadlift" });
+    await user.selectOptions(screen.getByLabelText(/^Movimiento/), "Deadlift");
+    await user.type(screen.getByLabelText(/^Carga \(kg\)/), "120");
+
+    await user.click(screen.getByRole("button", { name: "Guardar récord" }));
+
+    await waitFor(() => {
+      expect(mock.callsTo(RECORDS_LIST).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("el aviso de medidas y el de récord no se mezclan: abrir el panel de récord borra «Medidas guardadas.»", async () => {
+    const { user } = renderTab(BASE, extra());
+    await user.click(await screen.findByRole("button", { name: /Registrar medidas/ }));
+    await user.type(screen.getByLabelText(/^Peso/), "61,2");
+    await user.click(screen.getByRole("button", { name: "Guardar medidas" }));
+    await screen.findByText("Medidas guardadas.");
+
+    await user.click(registerRecord());
+
+    expect(screen.queryByText("Medidas guardadas.")).not.toBeInTheDocument();
+  });
+
+  it("no tiene violaciones de axe en RMs ni en Récords", async () => {
+    const first = renderTab(`${BASE}?tab=rms`, extra());
+    await screen.findByRole("table", { name: "RMs por movimiento del socio" });
+    expect(await axe(first.container)).toHaveNoViolations();
+    cleanup();
+
+    const second = renderTab(`${BASE}?tab=records`, extra());
+    await screen.findByRole("table", { name: "Récords del socio" });
+    expect(await axe(second.container)).toHaveNoViolations();
+  });
+});
+
+// Revisión S9-F2 (seguridad L3): sin la ficha cargada (member null) la pestaña no ofrece acciones de escritura.
+describe("AthleteTab · ficha sin cargar (revisión)", () => {
+  it("con member null no hay «+ Registrar récord» ni «+ Registrar medidas»", async () => {
+    renderTab(`${BASE}?tab=records`, {}, { member: null });
+
+    await screen.findByRole("tablist", { name: "Secciones del atleta" });
+    expect(screen.queryByRole("button", { name: /Registrar/ })).not.toBeInTheDocument();
   });
 });

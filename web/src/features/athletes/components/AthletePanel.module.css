@@ -1,4 +1,4 @@
-/* S9-F1: panel «Registrar medidas». Solo variables de tokens.css. */
+/* S9-F1 y S9-F2: formularios de los paneles laterales del atleta (Registrar medidas y Registrar récord). Solo variables de tokens.css. */
 .form {
   display: flex;
   flex-direction: column;
@@ -39,4 +39,8 @@
 .link {
   color: var(--blue-deep);
   font: var(--text-body);
+}
+
+.inline {
+  margin: 0 0 var(--space-2);
 }

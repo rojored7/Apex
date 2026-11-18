@@ -14,7 +14,7 @@ import { Button } from "../../../shared/ui/Button";
 import { Field } from "../../../shared/ui/Field";
 import { MessagePage } from "../../../shared/ui/MessagePage";
 import { PageHeader } from "../../../shared/ui/PageHeader";
-import { useBenchmarks, useMovements } from "../api";
+import { useBenchmarks, useMovements } from "../../../shared/data/catalog";
 import { MovementPicker } from "../components/MovementPicker";
 import { WodPreview } from "../components/WodPreview";
 import { wodFieldError, wodLoadError, wodSaveMessage } from "../wodFormErrors";

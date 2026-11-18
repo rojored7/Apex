@@ -531,3 +531,34 @@ describe("Tabs.module.css · pills (S9-F1)", () => {
     expect(block).not.toMatch(/\brgba?\(/);
   });
 });
+
+// Revisión S9-F2 (seguridad L5): los parámetros propios de una subpestaña (filtros de su lista) no se arrastran a la siguiente.
+describe("Tabs · ownParams", () => {
+  const renderOwn = (initial: string) =>
+    render(
+      <MemoryRouter initialEntries={[initial]}>
+        <Tabs label="Secciones del atleta" tabs={SUBTABS} variant="pills" ownParams={["kind", "invalidated", "benchmark"]}>
+          {(active) => <p>{`Subpanel ${active}`}</p>}
+        </Tabs>
+        <Location />
+      </MemoryRouter>,
+    );
+
+  it("al cambiar de subpestaña borra los parámetros propios y conserva el resto", async () => {
+    const user = userEvent.setup();
+    renderOwn("/socios/1/atleta?tab=records&kind=benchmark&invalidated=1&benchmark=abc&limit=50&x=1");
+
+    await user.click(screen.getByRole("tab", { name: "RMs por movimiento" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/socios/1/atleta?tab=rms&limit=50&x=1");
+  });
+
+  it("sin ownParams los demás parámetros se conservan como antes", async () => {
+    const user = userEvent.setup();
+    renderPills("/socios/1/atleta?tab=records&kind=benchmark&x=1");
+
+    await user.click(screen.getByRole("tab", { name: "RMs por movimiento" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/socios/1/atleta?tab=rms&kind=benchmark&x=1");
+  });
+});

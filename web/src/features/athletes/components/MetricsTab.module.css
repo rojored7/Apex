@@ -22,3 +22,10 @@
 .muted {
   color: var(--muted);
 }
+
+/* Las celdas de texto ocupan la misma franja de alto que las de MetricField (botón de --control) y se centran en ella: sin esto el «•••» del peso queda más abajo que la fecha. */
+.cell {
+  display: flex;
+  align-items: center;
+  min-height: var(--control);
+}

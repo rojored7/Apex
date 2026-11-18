@@ -5,7 +5,7 @@
 // - toScoreValues: los valores ya validados como los espera `PUT /results`.
 // DESIGN-GAP: «Nota (opcional)» y «anterior en Helen» no están en el contrato (EP-24); el récord automático llega con EP-24.
 import { z } from "zod";
-import { formatLoadKg, formatSeconds, gramsToKgInput, kgInputToGrams } from "../../shared/data/score";
+import { formatClock, formatLoadKg, gramsToKgInput, kgInputToGrams, parseClock } from "../../shared/data/score";
 import type { components } from "../../core/api/types";
 
 export const RESULT_LEVELS = ["rx", "rx_plus", "scaled"] as const;
@@ -18,11 +18,8 @@ export type ScoringType = (typeof SCORING_TYPES)[number];
 
 /** El código de Zod para una regla propia (no es un código del api). */
 const ISSUE_CODE = "custom" as const;
-const MAX_SECONDS = 86_400;
 const MAX_ROUNDS = 1000;
 const MAX_REPS = 100_000;
-const SECONDS_PER_MINUTE = 60;
-const CLOCK = /^(\d{1,4}):([0-5]\d)$/;
 const COUNT = /^\d{1,6}$/;
 
 export const SCORE_MESSAGES = {
@@ -87,17 +84,6 @@ export const sessionAttendanceSchema = z.object({
 export type SessionAttendanceView = z.infer<typeof sessionAttendanceSchema>;
 
 export const attendeeName = (attendee: Pick<AttendeeResultView, "first_name" | "last_name">): string => `${attendee.first_name} ${attendee.last_name}`.trim();
-
-/** «11:42» a segundos, o null si no es un tiempo válido (1 s a 24 h). */
-export function parseClock(text: string): number | null {
-  const match = CLOCK.exec(text.trim());
-  if (!match) return null;
-  const seconds = Number(match[1]) * SECONDS_PER_MINUTE + Number(match[2]);
-  return seconds >= 1 && seconds <= MAX_SECONDS ? seconds : null;
-}
-
-/** Segundos a «10:58». */
-export const formatClock = formatSeconds;
 
 export interface ScoreFormValues {
   time: string;

@@ -148,3 +148,125 @@ export function renderAthlete(ui: ReactElement, options: RenderAthleteOptions = 
   );
   return { mock, queryClient, user: userEvent.setup(), ...view };
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// S9-F2 · US-180 a US-182: RMs, récords y catálogo (RmOut, RecordOut, CatalogMovementOut y BenchmarkOut del contrato).
+export type RmFixture = components["schemas"]["RmOut"];
+export type RecordFixture = components["schemas"]["RecordOut"];
+
+export const RMS_PATH = `/athletes/${MEMBER_ID}/rms`;
+export const RECORDS_PATH = `/athletes/${MEMBER_ID}/records`;
+export const invalidatePath = (recordId: string): string => `${RECORDS_PATH}/${recordId}/invalidate`;
+
+export const recordId = (n: number): string => `a1a1a1a1-0000-4000-8000-${String(n).padStart(12, "0")}`;
+export const WOD_ID = "f2f2f2f2-0000-4000-8000-0000000000aa";
+export const OTHER_WOD_ID = "f2f2f2f2-0000-4000-8000-0000000000bb";
+
+/** El RM vigente de un movimiento (RmOut): gramos enteros. */
+export function rm(n: number, overrides: Partial<RmFixture> = {}): RmFixture {
+  return {
+    record_id: recordId(n),
+    movement_id: movementId(n),
+    movement_name: "Back Squat",
+    value_g: 85_000,
+    achieved_on: "2026-10-19",
+    source: "derived",
+    ...overrides,
+  };
+}
+
+export const movementId = (n: number): string => `d1d1d1d1-0000-4000-8000-${String(n).padStart(12, "0")}`;
+export const benchmarkId = (n: number): string => `e1e1e1e1-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+/** Un récord (RecordOut): por omisión un RM manual vigente de Deadlift. */
+export function record(n: number, overrides: Partial<RecordFixture> = {}): RecordFixture {
+  return {
+    id: recordId(n),
+    kind: "rm",
+    movement_id: movementId(2),
+    movement_name: "Deadlift",
+    benchmark_id: null,
+    benchmark_name: null,
+    score_type: null,
+    value_g: 110_000,
+    level: null,
+    seconds: null,
+    rounds: null,
+    reps: null,
+    load_g: null,
+    capped: false,
+    achieved_on: "2026-09-04",
+    source: "manual",
+    wod_id: null,
+    result_id: null,
+    result_source: null,
+    is_current: true,
+    invalidated_at: null,
+    invalidated_reason: null,
+    recorded_by: METRIC_RECORDER,
+    recorded_by_name: "Carlos",
+    created_at: "2026-09-04T15:00:00Z",
+    ...overrides,
+  };
+}
+
+/** Un récord derivado de un RM por carga (viene del resultado de un WOD). */
+export const derivedRm = (n: number, overrides: Partial<RecordFixture> = {}): RecordFixture =>
+  record(n, { movement_id: movementId(1), movement_name: "Back Squat", value_g: 85_000, achieved_on: "2026-10-19", source: "derived", wod_id: WOD_ID, result_id: `c1c1c1c1-0000-4000-8000-${String(n).padStart(12, "0")}`, result_source: "desk", ...overrides });
+
+/** Un récord derivado de un benchmark por tiempo (Helen 11:42 RX). */
+export const derivedBenchmark = (n: number, overrides: Partial<RecordFixture> = {}): RecordFixture =>
+  record(n, {
+    kind: "benchmark",
+    movement_id: null,
+    movement_name: null,
+    value_g: null,
+    benchmark_id: benchmarkId(3),
+    benchmark_name: "Helen",
+    score_type: "time",
+    seconds: 702,
+    level: "rx",
+    achieved_on: "2026-10-20",
+    source: "derived",
+    wod_id: OTHER_WOD_ID,
+    result_id: `c1c1c1c1-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    result_source: "desk",
+    ...overrides,
+  });
+
+/** Catálogo de prueba: tres movimientos en kg activos, uno en repeticiones, uno inactivo en kg y otro inactivo en metros. */
+export const CATALOG_MOVEMENTS = [
+  catalogMovement(1, "Back Squat", "kg", true),
+  catalogMovement(2, "Deadlift", "kg", true),
+  catalogMovement(3, "Pull-up", "reps", true),
+  catalogMovement(4, "Clean viejo", "kg", false),
+  catalogMovement(5, "Sled Push", "m", false),
+];
+
+function catalogMovement(n: number, name: string, unit: "kg" | "reps" | "m", isActive: boolean) {
+  return { id: movementId(n), name, category: "weightlifting" as const, unit, is_active: isActive, wod_count: 3, created_at: "2026-10-01T15:00:00Z", updated_at: "2026-10-01T15:00:00Z" };
+}
+
+export const CATALOG_BENCHMARKS = [
+  catalogBenchmark(1, "Fran", "time"),
+  catalogBenchmark(2, "Cindy", "rounds_reps"),
+  catalogBenchmark(3, "Helen", "time"),
+  catalogBenchmark(4, "Max Pull-ups", "reps"),
+  catalogBenchmark(5, "Max Clean", "load"),
+];
+
+function catalogBenchmark(n: number, name: string, scoreType: "time" | "rounds_reps" | "reps" | "load") {
+  return { id: benchmarkId(n), name, description: "", score_type: scoreType, wod_count: 2, created_at: "2026-10-01T15:00:00Z", updated_at: "2026-10-01T15:00:00Z" };
+}
+
+/** GET /movements como el api: respeta `active` y devuelve la página pedida. */
+export const movementsHandler: MockHandler = (call) => {
+  const url = new URL(call.url, "http://apex.test");
+  const onlyActive = url.searchParams.get("active") === "true";
+  return pageReply(call, CATALOG_MOVEMENTS.filter((m) => !onlyActive || m.is_active));
+};
+
+export const benchmarksHandler: MockHandler = (call) => pageReply(call, CATALOG_BENCHMARKS);
+
+/** Los dos catálogos simulados, para pantallas que los piden (el panel de récords). */
+export const CATALOG_HANDLERS: Record<string, MockHandler> = { "GET /movements": movementsHandler, "GET /benchmarks": benchmarksHandler };

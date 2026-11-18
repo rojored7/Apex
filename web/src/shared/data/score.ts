@@ -6,6 +6,8 @@ export const LOAD_MAX_G = 1_000_000;
 const GRAMS_PER_KG = 1000;
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
+const MAX_CLOCK_SECONDS = 86_400;
+const CLOCK = /^([0-9]{1,4}):([0-5][0-9])$/;
 const PLACEHOLDER = "—";
 
 export const SCORE_KINDS = ["time", "rounds_reps", "reps", "load", "none"] as const;
@@ -32,6 +34,17 @@ export function formatSeconds(total: number): string {
   const minutes = Math.floor((total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
   const seconds = total % SECONDS_PER_MINUTE;
   return hours > 0 ? `${String(hours)}:${pad2(minutes)}:${pad2(seconds)}` : `${String(minutes)}:${pad2(seconds)}`;
+}
+
+/** Segundos a «10:58» (con horas, «1:02:05»). */
+export const formatClock = formatSeconds;
+
+/** «11:42» a segundos, o null si no es un tiempo válido (1 s a 24 h). */
+export function parseClock(text: string): number | null {
+  const match = CLOCK.exec(text.trim());
+  if (!match) return null;
+  const seconds = Number(match[1]) * SECONDS_PER_MINUTE + Number(match[2]);
+  return seconds >= 1 && seconds <= MAX_CLOCK_SECONDS ? seconds : null;
 }
 
 /** Gramos a «102,5 kg» (sin ceros sobrantes). */
@@ -95,4 +108,36 @@ export const SCORE_TYPE_LABELS: Readonly<Record<ScoreKind, string>> = {
 /** S9-F1 (US-178): gramos a «61,2 kg» (un decimal fijo, coma decimal) para el peso corporal. */
 export function formatWeightKg(grams: number): string {
   return `${(grams / GRAMS_PER_KG).toFixed(1).replace(".", ",")} kg`;
+}
+
+const MINUS = "−";
+const NO_CHANGE = "Sin cambio";
+
+function signed(delta: number, text: string): string {
+  return `${delta < 0 ? MINUS : "+"}${text}`;
+}
+
+/** La diferencia de un solo número (segundos, repeticiones o gramos) con su signo, o «Sin cambio». */
+function numericDelta(current: number, previous: number, format: (absolute: number) => string): string {
+  const delta = current - previous;
+  return delta === 0 ? NO_CHANGE : signed(delta, format(Math.abs(delta)));
+}
+
+/**
+ * S9-F2 (US-183): la diferencia entre dos marcas del mismo tipo y nivel, con signo (el «−» es U+2212):
+ * tiempo «−0:28» o «+1:05», repeticiones «+5 reps», carga «+2,5 kg»; igual, «Sin cambio». `null` si no se pueden comparar:
+ * rondas + repeticiones (hace falta el tamaño de la ronda), marcas cortadas (DNF), datos que faltan o sin marca.
+ */
+export function formatScoreDelta(scoreType: ScoreKind, current: ScoreValues, previous: ScoreValues): string | null {
+  if (current.capped || previous.capped) return null;
+  switch (scoreType) {
+    case "time":
+      return current.seconds === null || previous.seconds === null ? null : numericDelta(current.seconds, previous.seconds, formatSeconds);
+    case "reps":
+      return current.reps === null || previous.reps === null ? null : numericDelta(current.reps, previous.reps, (n) => `${String(n)} reps`);
+    case "load":
+      return current.load_g === null || previous.load_g === null ? null : numericDelta(current.load_g, previous.load_g, formatLoadKg);
+    default:
+      return null;
+  }
 }

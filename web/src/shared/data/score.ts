@@ -8,7 +8,13 @@ const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
 const PLACEHOLDER = "—";
 
-export type ScoreKind = "time" | "rounds_reps" | "reps" | "load" | "none";
+export const SCORE_KINDS = ["time", "rounds_reps", "reps", "load", "none"] as const;
+export type ScoreKind = (typeof SCORE_KINDS)[number];
+
+/** ¿El texto que manda el api es uno de los tipos de marca que la pantalla sabe leer? */
+export function isScoreKind(value: string | null): value is ScoreKind {
+  return value !== null && (SCORE_KINDS as readonly string[]).includes(value);
+}
 
 export interface ScoreValues {
   seconds: number | null;
@@ -85,3 +91,8 @@ export const SCORE_TYPE_LABELS: Readonly<Record<ScoreKind, string>> = {
   load: "Carga",
   none: "Sin marca",
 };
+
+/** S9-F1 (US-178): gramos a «61,2 kg» (un decimal fijo, coma decimal) para el peso corporal. */
+export function formatWeightKg(grams: number): string {
+  return `${(grams / GRAMS_PER_KG).toFixed(1).replace(".", ",")} kg`;
+}

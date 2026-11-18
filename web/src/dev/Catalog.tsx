@@ -268,6 +268,9 @@ export function Catalog() {
               <Tabs label="Ficha del socio" tabs={[{ id: "datos", label: "Datos" }, { id: "pagos", label: "Pagos" }, { id: "clases", label: "Asistencia", disabledUntil: "v0.4" }, { id: "historial", label: "Historial" }]}>
                 {(active) => <p>Contenido de la pestaña {active}.</p>}
               </Tabs>
+              <Tabs label="Secciones del atleta" variant="pills" param="subtab" tabs={[{ id: "resumen", label: "Resumen" }, { id: "medidas", label: "Medidas corporales" }, { id: "rms", label: "RMs por movimiento" }]}>
+                {(active) => <p>Contenido de la subpestaña {active}.</p>}
+              </Tabs>
             </Section>
             <Section name="KpiCard">
               <div className={styles.row}>

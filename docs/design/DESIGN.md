@@ -88,7 +88,7 @@ Los nombres de clase de los HTML (`w-btn`, `w-tag`, `w-tbl`…) son solo de refe
 - **DataTable**: dentro de una caja con `overflow-x: auto`; cabecera en mayúsculas `--muted`; primera columna siempre enlace a la ficha; sin botones de editar o borrar en las filas. En celular se convierte en lista de tarjetas (ver `Socios_Movil.html`).
 - **Pagination**: tamaño de página (25/50/100), "1–25 de 342", anterior/siguiente.
 - **Chips** de filtro rápido por estado, con conteo (`Al día 210`). Activo: fondo negro.
-- **Tabs**: línea inferior azul en la activa. En fichas, la última siempre es Historial.
+- **Tabs**: línea inferior azul en la activa. En fichas, la última siempre es Historial. Variante `variant="pills"` (S9-F1, E7): píldoras con borde y fondo `--blue-tint` en la activa, para subpestañas dentro de una pestaña (Atleta: Resumen, Medidas corporales, RMs, Récords, Benchmarks); misma semántica y teclado, la lista lleva `data-variant`.
 - **KpiCard**: etiqueta `--muted`, cifra `--text-kpi`, nota. La que pide atención lleva fondo `--blue-tint` y borde azul.
 - **SidePanel**: formulario corto sobre la lista (planes, movimientos, usuarios, reglas). Cierra con ✕ y Cancelar.
 - **ConfirmModal**: pregunta clara en el título, consecuencia en una frase, campo Motivo cuando aplica, botones Volver y la acción en `danger`.

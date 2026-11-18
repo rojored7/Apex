@@ -59,6 +59,10 @@ const TABLE = {
   "movements.view": STAFF,
   "results.record": STAFF,
   "athletes.view": STAFF,
+  // S9-F1 (US-178, US-179): registrar y anular medidas, y mostrar una medida en claro; el api abre las tres a admin y coach.
+  // (El reveal del coach con el socio dado de baja da 403 en el api, S9-D34: la pantalla lo explica.)
+  "athletes.write": STAFF,
+  "athletes.reveal": STAFF,
   "notifications.view": STAFF,
   "account.manage": STAFF,
   // Solo el socio, en /mi/*.

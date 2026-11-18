@@ -10,6 +10,7 @@ import { pageSchema, type Page } from "../../core/api/page";
 import { listParams } from "../../core/api/query";
 import { parseResponse } from "../../core/api/response";
 import { useSensitiveMutation } from "../../core/api/useSensitiveMutation";
+import { invalidateAthleteViews } from "./athletes";
 
 export const RESULT_LEVELS = ["rx", "rx_plus", "scaled"] as const;
 export type ResultLevel = (typeof RESULT_LEVELS)[number];
@@ -72,9 +73,11 @@ export const WOD_RESULTS_QUERY_KEY = ["wod-results"] as const;
 /** Todo lo que muestra un resultado: ranking, lista, WODs, ficha del socio, tablet de la clase y el WOD de hoy de Inicio (M-5). */
 const RESULT_VIEW_KEYS = [["wod-leaderboard"], ["wod-results"], ["wods"], ["wod"], ["member-results"], ["session-results"], ["dashboard"]] as const;
 
-/** Guardar o anular un resultado relee todas las vistas que lo muestran. */
+/** Guardar o anular un resultado relee todas las vistas que lo muestran (también las del atleta, S9-F1). */
 export function invalidateResultViews(queryClient: QueryClient): void {
   for (const queryKey of RESULT_VIEW_KEYS) void queryClient.invalidateQueries({ queryKey });
+  // S9-F1: un resultado derivado deja un RM o un récord nuevo; la pestaña Atleta lo relee.
+  invalidateAthleteViews(queryClient);
 }
 export const WOD_SESSIONS_QUERY_KEY = ["wod-sessions"] as const;
 

@@ -1,0 +1,35 @@
+/* S9-F1: un campo de una medición con «Mostrar». Solo variables de tokens.css. */
+.field {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.value {
+  font: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+.toggle {
+  padding: 0 var(--space-3);
+}
+
+.toggle:focus-visible {
+  outline: 3px solid var(--blue-deep);
+  outline-offset: 2px;
+}
+
+.error {
+  flex-basis: 100%;
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--danger);
+}

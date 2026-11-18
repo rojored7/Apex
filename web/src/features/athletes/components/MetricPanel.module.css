@@ -1,0 +1,42 @@
+/* S9-F1: panel «Registrar medidas». Solo variables de tokens.css. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.note {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-caption);
+}
+
+.error,
+.consent {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--danger);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--text-body);
+}
+
+/* Falta la autorización de datos: aviso, no error del servidor. */
+.consent {
+  border-color: var(--warning);
+}
+
+.link {
+  color: var(--blue-deep);
+  font: var(--text-body);
+}

@@ -1,6 +1,6 @@
 // S8-F3 (S8-D13, S8-D41): marcas y cargas en pantalla. El contrato lleva gramos enteros; la pantalla, kg con hasta dos decimales.
 import { describe, expect, it } from "vitest";
-import { formatLoadKg, formatScore, formatSeconds, gramsToKgInput, kgInputToGrams, LOAD_MAX_G } from "./score";
+import { formatLoadKg, formatScore, formatSeconds, formatWeightKg, gramsToKgInput, isScoreKind, kgInputToGrams, LOAD_MAX_G, SCORE_KINDS } from "./score";
 
 describe("formatSeconds", () => {
   it("da minutos y segundos con dos cifras", () => {
@@ -57,5 +57,28 @@ describe("gramsToKgInput", () => {
     expect(gramsToKgInput(102500)).toBe("102,5");
     expect(gramsToKgInput(60000)).toBe("60");
     expect(gramsToKgInput(null)).toBe("");
+  });
+});
+
+// S9-F1 (US-178, design Atleta_Perfil.html): el peso corporal se ve con un decimal fijo, «61,2 kg», «62,0 kg».
+describe("formatWeightKg", () => {
+  it("gramos a kg con un decimal y coma decimal", () => {
+    expect(formatWeightKg(61_200)).toBe("61,2 kg");
+    expect(formatWeightKg(62_000)).toBe("62,0 kg");
+    expect(formatWeightKg(63_100)).toBe("63,1 kg");
+  });
+
+  it("los extremos del contrato (20 kg y 400 kg)", () => {
+    expect(formatWeightKg(20_000)).toBe("20,0 kg");
+    expect(formatWeightKg(400_000)).toBe("400,0 kg");
+  });
+});
+
+// S9-F1 (revisión L9): el texto del api se reconoce sin un `as`.
+describe("isScoreKind", () => {
+  it("acepta los cinco tipos de marca y rechaza lo demás", () => {
+    for (const kind of SCORE_KINDS) expect(isScoreKind(kind)).toBe(true);
+    expect(isScoreKind("distance")).toBe(false);
+    expect(isScoreKind(null)).toBe(false);
   });
 });

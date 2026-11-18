@@ -98,22 +98,52 @@ describe("MemberDetailPage · acciones por rol (useCan)", () => {
 });
 
 describe("MemberDetailPage · pestañas (rutas hijas, S3-D65)", () => {
-  it("Datos es la activa en /socios/:id; Membresías, Pagos (S3-F7), Asistencia (S7-F5) e Historial (S4A-F2) están habilitadas; las demás, deshabilitadas, e Historial es la última", async () => {
+  it("Datos es la activa en /socios/:id; Membresías, Pagos (S3-F7), Asistencia (S7-F5), Atleta (S9-F1) e Historial (S4A-F2) están habilitadas, e Historial es la última", async () => {
     renderMemberDetail();
     const tablist = await screen.findByRole("tablist", { name: "Secciones del socio" });
     const tabs = within(tablist).getAllByRole("tab");
 
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(["Datos", "Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]);
     expect(within(tablist).getByRole("tab", { name: "Datos" })).toHaveAttribute("aria-selected", "true");
-    for (const name of ["Membresías", "Pagos", "Asistencia", "Resultados", "Avisos", "Adjuntos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
-    for (const name of [/^Atleta/]) {
-      expect(within(tablist).getByRole("tab", { name })).toHaveAttribute("aria-disabled", "true");
-    }
+    for (const name of ["Membresías", "Pagos", "Asistencia", "Resultados", "Atleta", "Avisos", "Adjuntos", "Historial"]) expect(within(tablist).getByRole("tab", { name })).not.toHaveAttribute("aria-disabled");
+    // S9-F1: Atleta ya no dice «Disponible en v0.6».
+    expect(within(tablist).getByRole("tab", { name: "Atleta" })).not.toHaveTextContent("Disponible en");
+    expect(within(tablist).queryByText("Disponible en v0.6")).not.toBeInTheDocument();
     expect(within(tablist).getByRole("tab", { name: "Asistencia" })).not.toHaveTextContent("Disponible en");
     expect(within(tablist).getByRole("tab", { name: "Avisos" })).not.toHaveTextContent("Disponible en");
     expect(within(tablist).getByRole("tab", { name: "Historial" })).not.toHaveTextContent("Disponible en");
     expect(within(tablist).getByRole("tab", { name: "Adjuntos" })).not.toHaveTextContent("Disponible en");
     expect(screen.getByRole("tabpanel")).toHaveTextContent("Datos de contacto");
+  });
+
+  // S9-F1 (US-184, S3-D65): Atleta es una hija de la ficha: navega a /socios/:id/atleta, monta el Resumen con
+  // GET /athletes/{id}/summary y no vuelve a pedir la ficha.
+  it("S9-F1: Atleta navega a /socios/:id/atleta y monta el Resumen sin volver a pedir la ficha", async () => {
+    const { mock, user } = renderMemberDetail(undefined, { handlers: { [`GET /athletes/${MEMBER_ID}/summary`]: ok({ metrics_count: 0, last_metric_on: null, current_rms: 0, benchmarks_with_attempts: 0, truncated: false, recent_records: [] }) } });
+    await user.click(await screen.findByRole("tab", { name: "Atleta" }));
+
+    expect(screen.getByTestId("location").textContent).toBe(`/socios/${MEMBER_ID}/atleta`);
+    expect(screen.getByRole("tab", { name: "Atleta" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tablist", { name: "Secciones del atleta" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Resumen" })).toHaveAttribute("aria-selected", "true");
+    expect(mock.callsTo(`GET /athletes/${MEMBER_ID}/summary`)).toHaveLength(1);
+    expect(mock.callsTo(`GET ${DETAIL_PATH}`)).toHaveLength(1);
+  });
+
+  it("S9-F1: el coach también ve la pestaña Atleta habilitada (athletes.view)", async () => {
+    signInAs("coach");
+    renderMemberDetail();
+
+    expect(await screen.findByRole("tab", { name: "Atleta" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("S9-F1: con la ruta de Atleta no disponible (feature deshabilitada) la pestaña se ve deshabilitada con «No disponible»", async () => {
+    availability.blocked.add("atleta");
+    renderMemberDetail();
+
+    const tab = await screen.findByRole("tab", { name: /^Atleta/ });
+    expect(tab).toHaveAttribute("aria-disabled", "true");
+    expect(tab).toHaveTextContent("No disponible");
   });
 
   it("S4A-F2: Historial navega a /socios/:id/historial y monta la pestaña con GET /members/{id}/audit sin volver a pedir la ficha", async () => {

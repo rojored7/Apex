@@ -45,6 +45,9 @@ const STAFF = [
   "movements.view",
   "results.record",
   "athletes.view",
+  // S9-F1 (US-178, US-179): registrar y anular medidas, y mostrar una medida en claro; el api abre las tres a admin y coach.
+  "athletes.write",
+  "athletes.reveal",
   "notifications.view",
   "account.manage",
 ] as const;

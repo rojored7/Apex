@@ -103,6 +103,8 @@ export interface MemberTabMember {
   last_name: string;
   /** No nulo: el socio está dado de baja y su ficha es de solo lectura (N-20). */
   deleted_at: string | null;
+  /** S9-D29 (H-1): la ficha trae la fecha de la autorización de datos; `null` = falta. Sin el dato (pestaña montada sola), `undefined`. */
+  data_consent_at?: string | null;
 }
 
 export interface MemberTabContext {

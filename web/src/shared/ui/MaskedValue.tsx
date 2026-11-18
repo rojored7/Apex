@@ -12,12 +12,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import { isApiError } from "../../core/api/errors";
 import type { Action } from "../../core/auth/permissions";
 import { useCan } from "../../core/auth/useCan";
+import { REVEAL_TTL_MS, useTimedReveal } from "../hooks/useTimedReveal";
 import { NO_VALUE_LABEL, maskValue, type SensitiveKind } from "../lib/audit-labels";
 import { Button } from "./Button";
 import styles from "./MaskedValue.module.css";
 
-/** Tiempo que el dato queda en claro antes de volver a enmascararse. */
-export const REVEAL_TTL_MS = 60_000;
+/** Tiempo que el dato queda en claro antes de volver a enmascararse (vive en useTimedReveal; se reexporta aquí). */
+export { REVEAL_TTL_MS };
 
 export const REVEAL_FORBIDDEN = "No tienes permiso para ver este dato";
 export const REVEAL_GENERIC_ERROR = "No se pudo mostrar el dato. Intenta de nuevo.";
@@ -52,18 +53,16 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
   const [state, setState] = useState<RevealState>({ status: "masked" });
   const busy = useRef(false);
   const mounted = useRef(true);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearTimer = (): void => {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-  };
+  const isRevealedState = state.status === "revealed";
+  // S9-F1 (revisión): el plazo de 60 s, la pestaña oculta, pagehide, pageshow y la suspensión del equipo, en un solo hook.
+  const { arm, disarm } = useTimedReveal(isRevealedState, () => {
+    setState({ status: "masked" });
+  });
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      if (timer.current !== null) clearTimeout(timer.current);
     };
   }, []);
 
@@ -88,10 +87,7 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
         return;
       }
       setState({ status: "revealed", plain, source: requestedFor });
-      clearTimer();
-      timer.current = setTimeout(() => {
-        setState({ status: "masked" });
-      }, REVEAL_TTL_MS);
+      arm();
     } catch (error) {
       if (mounted.current) setState({ status: "error", message: errorMessage(error) });
     } finally {
@@ -100,7 +96,7 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
   };
 
   const hide = (): void => {
-    clearTimer();
+    disarm();
     setState({ status: "masked" });
   };
 
@@ -109,32 +105,6 @@ export function MaskedValue({ label, masked, onReveal, revealAction = "members.r
   // L2: un claro que ya no se muestra (otro registro, sin permiso) no se guarda. Se ajusta durante el
   // render (el patrón de React para derivar estado de las props), sin esperar a un efecto.
   if (revealed && !isRevealed) setState({ status: "masked" });
-
-  // Sin claro, el temporizador de los 60 s ya no tiene nada que enmascarar.
-  useEffect(() => {
-    if (revealed) return;
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-  }, [revealed]);
-
-  // L2: con el claro a la vista, ocultar la pestaña o salir de la página lo enmascara.
-  useEffect(() => {
-    if (!revealed) return undefined;
-    const mask = (): void => {
-      if (timer.current !== null) clearTimeout(timer.current);
-      timer.current = null;
-      setState({ status: "masked" });
-    };
-    const onVisibility = (): void => {
-      if (document.visibilityState === "hidden") mask();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", mask);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", mask);
-    };
-  }, [revealed]);
 
   return (
     <div className={styles.field}>

@@ -150,8 +150,13 @@ export const ROUTE_TABLE: readonly RouteDef[] = Object.freeze([
     access: "results.record",
     load: () => import("../features/results/tabs/MemberResultsTab"),
   }),
+  // S9-F1 (US-184, S3-D65): Atleta es hija de la ficha y de la feature athletes (admin y coach).
+  childRoute(MEMBER_DETAIL, "/socios/:id/atleta", "Perfil del atleta", {
+    feature: "athletes",
+    access: "athletes.view",
+    load: () => import("../features/athletes/tabs/AthleteTab"),
+  }),
   route("/socios/:id/editar", "Editar socio", "members", "members.update", "panel", { load: () => import("../features/members/pages/MemberFormPage") }),
-  route("/socios/:id/atleta", "Perfil del atleta", "athletes", "athletes.view", "panel"),
   // S2-D26: /planes es solo admin en el front. S2-F7: lista (US-079) y alta (US-078).
   route("/planes", "Planes", "plans", "plans.view", "panel", { load: () => import("../features/plans/pages/PlansPage") }),
   // S3-F5: lista con filtros, resumen, congelar y anular (US-089 a US-092).

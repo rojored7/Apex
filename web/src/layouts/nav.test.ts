@@ -150,6 +150,27 @@ describe("menú y rutas hijas (S3-F3, E14)", () => {
   });
 });
 
+// S9-F1 (US-184): Atleta es una pestaña de la ficha (design: el menú no la lista), no una entrada del menú.
+describe("Atleta no es una entrada del menú (S9-F1)", () => {
+  it("con athletes habilitada el menú de admin y coach no cambia y ninguna entrada lleva a /atleta", () => {
+    const sinAtletas = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "athletes"));
+
+    expect(ENABLED_FEATURES.has("athletes")).toBe(true);
+    for (const role of ["admin", "coach"] as const) {
+      expect(labels(buildNavItems(role, ENABLED_FEATURES)), role).toEqual(labels(buildNavItems(role, sinAtletas)));
+      expect(labels(buildNavItems(role, ENABLED_FEATURES)), role).not.toContain("Atleta");
+    }
+    expect(NAV_CATALOG.some((item) => item.to.includes("atleta") || item.feature === "athletes")).toBe(false);
+  });
+
+  it("la ruta de la pestaña la ve el coach (athletes.view) y no el socio", () => {
+    expect(canAccessRoute("coach", "/socios/42/atleta")).toBe(true);
+    expect(canAccessRoute("admin", "/socios/42/atleta")).toBe(true);
+    expect(canAccessRoute("member", "/socios/42/atleta")).toBe(false);
+    expect(findRoute("/socios/42/atleta")).toMatchObject({ parent: "/socios/:id", feature: "athletes", access: "athletes.view" });
+  });
+});
+
 describe("Auditoría en el menú (S4A-F1, S4A-D30)", () => {
   it("lleva a /sistema/auditoria con la feature audit, entre Usuarios y roles y Llaves de cifrado (S6-F2), solo para el admin", () => {
     const auditoria = NAV_CATALOG.find((item) => item.label === "Auditoría");

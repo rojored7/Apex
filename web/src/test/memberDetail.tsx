@@ -16,6 +16,7 @@ import MemberHistoryTab from "../features/members/components/MemberHistoryTab";
 import MemberMembershipsTab from "../features/memberships/components/MemberMembershipsTab";
 import MemberPaymentsTab from "../features/payments/components/MemberPaymentsTab";
 import AttachmentsTab from "../features/attachments/pages/AttachmentsTab";
+import AthleteTab from "../features/athletes/tabs/AthleteTab";
 import { MemberSensitiveField, type MemberSensitiveFieldProps } from "../features/members/components/MemberSensitiveField";
 import MemberDetailPage from "../features/members/pages/MemberDetailPage";
 import MemberFormPage from "../features/members/pages/MemberFormPage";
@@ -159,6 +160,8 @@ export function renderMemberDetail(entry = `/socios/${MEMBER_ID}`, { handlers = 
           { path: "/socios/:id/pagos", element: <MemberPaymentsTab /> },
           { path: "/socios/:id/historial", element: <MemberHistoryTab /> },
           { path: "/socios/:id/adjuntos", element: <AttachmentsTab /> },
+          // S9-F1 (US-184): la pestaña Atleta.
+          { path: "/socios/:id/atleta", element: <AthleteTab /> },
         ],
       },
       { path: "/socios/:id/editar", element: shell(<MemberFormPage />) },

@@ -264,10 +264,11 @@ export async function venderMembresia(page: Page, socioId: string, planId: strin
   return (await response.json()) as { id: string; status: string };
 }
 
-/** S3-F3: da de baja lógica al socio creado por la spec (DELETE /members/{id}, B10); sin la ruta no hace nada. */
+/** S3-F3: da de baja lógica al socio creado por la spec (DELETE /members/{id}, B10); lanza si el api no responde 2xx (un 404 por ya dado de baja también). */
 export async function darDeBajaSocio(page: Page, socioId: string, admin: Credentials = datosDeBase()): Promise<void> {
   const headers = await accessDe(page, admin);
-  await page.request.delete(`${API}/members/${socioId}`, { headers });
+  const response = await page.request.delete(`${API}/members/${socioId}`, { headers });
+  if (!response.ok()) throw new Error(`DELETE /members/{id} respondió ${String(response.status())}.`);
 }
 
 /** S3-F5: fecha civil de Bogotá (UTC-5 fijo) desplazada `dias` desde hoy, "AAAA-MM-DD". */

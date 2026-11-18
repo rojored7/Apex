@@ -31,6 +31,8 @@ export interface TabsProps {
    * "Datos" de la ficha): no agrega segmento y es la activa cuando la URL no trae ninguno.
    */
   indexId?: string;
+  /** S9-F1 (E7): `underline` (por defecto) o `pills` (subpestañas del atleta); solo cambia la presentación, no la semántica. */
+  variant?: "underline" | "pills";
   children: (activeId: string) => ReactNode;
 }
 
@@ -39,7 +41,7 @@ function segmentAfter(pathname: string, basePath: string): string | null {
   return pathname.slice(basePath.length + 1).split("/")[0] ?? null;
 }
 
-export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", indexId, children }: TabsProps) {
+export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath = "", indexId, variant = "underline", children }: TabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -84,6 +86,8 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
       // (la ficha tiene dos listas paginadas, Membresías y Pagos); lo demás de la URL se conserva.
       const next = new URLSearchParams(location.search);
       next.delete("offset");
+      // L5 (S9-F1): `?tab=` es de las subpestañas de una hija (Atleta); no se arrastra a las demás pestañas de la ficha.
+      next.delete(param);
       const query = next.toString();
       void navigate(`${id === indexId ? basePath : `${basePath}/${id}`}${query === "" ? "" : `?${query}`}`);
     }
@@ -108,7 +112,7 @@ export function Tabs({ label, tabs, urlMode = "query", param = "tab", basePath =
 
   return (
     <div className={styles.tabs}>
-      <div ref={listRef} role="tablist" aria-label={label} className={styles.list} onKeyDown={onKeyDown}>
+      <div ref={listRef} role="tablist" aria-label={label} data-variant={variant} className={cx(styles.list, variant === "pills" && styles.pills)} onKeyDown={onKeyDown}>
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           const isDisabled = isOff(tab);

@@ -3,6 +3,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { axe } from "vitest-axe";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Tabs, type TabItem } from "./Tabs";
@@ -236,6 +237,15 @@ describe("Tabs", () => {
     expect(screen.getByTestId("location").textContent).toBe("/socios/1?limit=50&pago=nuevo");
   });
 
+  it("S9-F1 (revisión L5): en modo segmento, cambiar de pestaña de la ficha borra ?tab= (la subpestaña de otra hija no se arrastra) y conserva lo demás", async () => {
+    const user = userEvent.setup();
+    renderIndexTabs("/socios/1/membresias?tab=medidas&limit=50&pago=nuevo");
+
+    await user.click(screen.getByRole("tab", { name: "Datos" }));
+
+    expect(screen.getByTestId("location").textContent).toBe("/socios/1?limit=50&pago=nuevo");
+  });
+
   it("revisión S3-F7 (M3): una pestaña con disabledNote se ve deshabilitada con ese texto, sin versión, y las flechas la saltan", async () => {
     const user = userEvent.setup();
     render(
@@ -432,5 +442,92 @@ describe("Tabs.module.css · sin medidas literales", () => {
 
     expect(used.size).toBeGreaterThan(0);
     expect(missing).toEqual([]);
+  });
+});
+
+// S9-F1 (E7, US-184): variante `pills` para las subpestañas del atleta. Misma semántica (tablist, tab, tabpanel) y
+// mismo teclado; cambia solo la presentación, que se declara con `data-variant` en la lista y con una clase `.pills`.
+const SUBTABS: TabItem[] = [
+  { id: "resumen", label: "Resumen" },
+  { id: "medidas", label: "Medidas corporales" },
+  { id: "rms", label: "RMs por movimiento" },
+  { id: "records", label: "Récords" },
+  { id: "benchmarks", label: "Benchmarks" },
+];
+
+function renderPills(initial = "/socios/1/atleta") {
+  return render(
+    <MemoryRouter initialEntries={[initial]}>
+      <Tabs label="Secciones del atleta" tabs={SUBTABS} variant="pills">
+        {(active) => <p>{`Subpanel ${active}`}</p>}
+      </Tabs>
+      <Location />
+    </MemoryRouter>,
+  );
+}
+
+describe("Tabs · variant pills (S9-F1, E7)", () => {
+  it("sin variante la lista se declara underline y con pills, pills", () => {
+    const { unmount } = renderQuery();
+    expect(screen.getByRole("tablist", { name: "Secciones del socio" })).toHaveAttribute("data-variant", "underline");
+    unmount();
+
+    renderPills();
+    expect(screen.getByRole("tablist", { name: "Secciones del atleta" })).toHaveAttribute("data-variant", "pills");
+  });
+
+  it("conserva tablist, tab y tabpanel enlazados, con la primera activa por defecto y tabindex móvil", () => {
+    renderPills();
+
+    const resumen = screen.getByRole("tab", { name: "Resumen" });
+    expect(resumen).toHaveAttribute("aria-selected", "true");
+    expect(resumen).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tab", { name: "Benchmarks" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", resumen.id);
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Subpanel resumen");
+  });
+
+  it("lee ?tab=medidas de la URL y la flecha derecha pasa a RMs conservando otros parámetros", async () => {
+    const user = userEvent.setup();
+    renderPills("/socios/1/atleta?tab=medidas&offset=25&x=1");
+
+    expect(screen.getByRole("tab", { name: "Medidas corporales" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "Medidas corporales" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/socios/1/atleta?tab=medidas&x=1");
+    await user.keyboard("{ArrowRight}");
+
+    expect(screen.getByRole("tab", { name: "RMs por movimiento" })).toHaveFocus();
+    expect(screen.getByTestId("location")).toHaveTextContent("/socios/1/atleta?tab=rms&x=1");
+  });
+
+  it("Inicio y Fin recorren las cinco píldoras y la flecha izquierda da la vuelta", async () => {
+    const user = userEvent.setup();
+    renderPills();
+
+    await user.click(screen.getByRole("tab", { name: "Resumen" }));
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tab", { name: "Benchmarks" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Home}");
+    expect(screen.getByRole("tab", { name: "Resumen" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Benchmarks" })).toHaveFocus();
+  });
+
+  it("no tiene violaciones de axe", async () => {
+    const { container } = renderPills("/socios/1/atleta?tab=records");
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("Tabs.module.css · pills (S9-F1)", () => {
+  const css = tabsCss.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("define una variante .pills sin colores ni medidas literales", () => {
+    expect(css).toMatch(/\.pills\b/);
+    const block = /\.pills[^{]*\{[^}]*\}/.exec(css)?.[0] ?? "";
+    expect(block).not.toBe("");
+    expect(block).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(block).not.toMatch(/\brgba?\(/);
   });
 });

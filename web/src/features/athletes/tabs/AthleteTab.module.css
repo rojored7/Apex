@@ -1,0 +1,32 @@
+/* S9-F1: pestaña Atleta de la ficha. Solo variables de tokens.css. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.soon {
+  margin: 0;
+  color: var(--muted);
+  font: var(--text-body);
+}
+
+/* El aviso de guardado es informativo: borde azul, como los de la ficha. */
+.saved {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--apex-blue);
+  border-left-width: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--blue-tint);
+  color: var(--ink);
+  font: var(--text-body);
+}

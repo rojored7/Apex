@@ -1,6 +1,7 @@
 // US-053 T1, L-5 y S2-D23: acceso por ruta con la matriz de US-040, inicio por rol sin
 // literales de rol y `next` sin redirecciones abiertas.
-import { childRoute, fullPathOf, type RouteDef } from "../../config/routeTable";
+import { ENABLED_FEATURES } from "../../config/features";
+import { childRoute, fullPathOf, ROUTE_TABLE, type RouteDef } from "../../config/routeTable";
 import { REFERENCE_ROUTES } from "../../config/routes.reference";
 import { ROLES, can, type Role } from "./permissions";
 import type { Feature } from "../../config/features";
@@ -196,6 +197,19 @@ describe("isPageAvailable", () => {
       expect(isPageAvailable(role, "/socios/42/membresias")).toBe(true);
       expect(isPageAvailable(role, "/socios/42/pagos")).toBe(true);
     }
-    expect(isPageAvailable("admin", "/socios/42/atleta")).toBe(false);
+  });
+
+  // S9-F1 (US-184): Atleta es una hija de la ficha de la feature athletes (athletes.view: admin y coach), con página.
+  it("con la tabla real: Atleta de la ficha está disponible para admin y coach y no para el socio ni sin sesión", () => {
+    expect(isPageAvailable("admin", "/socios/42/atleta")).toBe(true);
+    expect(isPageAvailable("coach", "/socios/42/atleta")).toBe(true);
+    expect(isPageAvailable("member", "/socios/42/atleta")).toBe(false);
+    expect(isPageAvailable(null, "/socios/42/atleta")).toBe(false);
+  });
+
+  it("S9-F1: sin la feature athletes la pestaña Atleta no abre página", () => {
+    const sinAtletas = new Set<Feature>([...ENABLED_FEATURES].filter((f) => f !== "athletes"));
+
+    expect(isPageAvailable("admin", "/socios/42/atleta", ROUTE_TABLE, sinAtletas)).toBe(false);
   });
 });

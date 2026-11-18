@@ -33,6 +33,20 @@
   outline-offset: -3px;
 }
 
+/* S9-F1 (E7): variante de píldoras (subpestañas del atleta). Misma semántica; cambia solo la presentación. */
+.pills {
+  gap: var(--space-2);
+  border-bottom: 0;
+  padding-bottom: var(--space-1);
+}
+
+.pills .tab {
+  margin-bottom: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+
 .tab:hover:not(.disabled) {
   background: var(--blue-tint);
 }
@@ -60,4 +74,9 @@
 .panel:focus-visible {
   outline: 3px solid var(--blue-deep);
   outline-offset: 2px;
+}
+
+.pills .active {
+  border-color: var(--apex-blue);
+  background: var(--blue-tint);
 }

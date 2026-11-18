@@ -46,6 +46,8 @@ export const REFERENCE_ROUTES: readonly ReferenceRoute[] = [
   { path: "/socios/:id/asistencia", feature: "classes", access: "classes.view", layout: "panel", parent: "/socios/:id" },
   // S8-F5 (US-173): la pestaña Resultados, hija de la feature results (admin y coach).
   { path: "/socios/:id/resultados", feature: "results", access: "results.record", layout: "panel", parent: "/socios/:id" },
+  // S9-F1 (US-184): la pestaña Atleta, hija de la feature athletes (admin y coach).
+  { path: "/socios/:id/atleta", feature: "athletes", access: "athletes.view", layout: "panel", parent: "/socios/:id" },
   r("/socios/:id/editar", "members", "members.update", "panel"),
   // Planes (solo admin)
   r("/planes", "plans", "plans.view", "panel"),
@@ -68,8 +70,6 @@ export const REFERENCE_ROUTES: readonly ReferenceRoute[] = [
   r("/wods/:id", "wods", "wods.view", "panel"),
   // Resultados
   r("/clases/:id/resultados", "results", "results.record", "gym"),
-  // Atleta
-  r("/socios/:id/atleta", "athletes", "athletes.view", "panel"),
   // Avisos
   r("/avisos/hoy", "notifications", "notifications.view", "panel"),
   r("/avisos/reglas", "notifications", "notifications.view", "panel"),

@@ -5,6 +5,44 @@ compara la etiqueta con el encabezado de la primera sección, con `api/pyproject
 `web/package.json`. El SHA de cierre vive en el cuerpo de la sección (no lo exige ningún script) y
 es el que se pasa a `infra/deploy.sh --expect-sha`.
 
+## [0.6.0]
+
+Fecha de cierre: 2026-11-19. SHA de cierre: el del commit etiquetado `v0.6.0` (`git rev-parse v0.6.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta se publica en GitHub junto con `main`; el Release en borrador lo arma la CI (`release.yml`).
+
+Sexta versión desplegable: perfil del atleta. Medidas corporales cifradas, récords personales manuales y derivados de los resultados (RM por carga y benchmarks), su invalidación al corregir o anular, la serie de cada benchmark y la pestaña Atleta de la ficha con cinco subpestañas. Cierra las tres deudas aceptadas de la v0.5.
+
+### Sprint 9 · Medidas corporales (EP-24, US-178, US-179)
+- Módulo `athletes` (esquema `athletes`, migraciones 0042 a 0044): `athletes.body_metrics` con peso en gramos, estatura en cm, % de grasa y notas, las cuatro cifradas con la clase nueva `athlete.metric` (blob `apx1.`, sin índice ciego). La llave la crea el arranque del api; no hay paso `init-keys` (S9-D5).
+- Sin autorización de datos del socio no se guarda ninguna medida: 409 `consent_required` y ningún `encrypt` (S9-D29).
+- La lista nunca descifra: cada valor se ve con «Mostrar» (`POST /athletes/{id}/metrics/{metric_id}/reveal`), que deja una fila `reveal` en la auditoría y un `decrypt` en `crypto_ops`, también para un campo vacío (P6), con las ventanas de `members-reveal`. Anular una medida es lógico (`voided_at`), con CHECK de orden temporal (0044, S9-D70).
+
+### Sprint 9 · Récords personales (US-180 a US-183)
+- `athletes.personal_records`: récords manuales (RM en kg, con fecha) y derivados de `results` en la misma transacción del resultado: un `rx` o `rx_plus` validado de un WOD por carga crea el RM del movimiento principal; un mejor tiempo o marca de un benchmark crea su récord, agrupado por `benchmark_id`. Un `scaled` no deriva (N-45).
+- Corregir o anular el resultado invalida el récord sin borrarlo (`invalidated_at`, motivo `superseded` o `voided`) y repone el mejor que quede (S9-D11). Un fallo del handler no tumba el resultado: queda una alerta sin ids y `derive-records` repara (fallo blando, S9-D42).
+- `derive-records [--dry-run] --as <admin>` (S9-D21): paso de despliegue de v0.6 que deriva los récords de los resultados anteriores; idempotente, auditado, una transacción por socio. Puerto `RecordsProbe` para que `wods` sepa si un movimiento o benchmark tiene récords sin importar `athletes`.
+- Rutas: 11 bajo `/athletes/{member_id}`, solo admin y coach. Cubeta nueva `athletes-write` (30/min): 28 cubetas y 27 variables `USER_*`.
+
+### Sprint 9 · Pestaña Atleta (US-184)
+- En la ficha del socio: Resumen, Medidas corporales, RMs por movimiento, Récords y Benchmarks (con la gráfica de la serie y «Mejor»), con `Tabs variant="pills"`, `StatusTag mark="best"` y `TrendChart` en `shared/ui`. Ninguna subpestaña pide un `reveal` al abrirse. Controles de 44 px.
+- Historial del socio con frases para medidas, récords y resultados, y la pantalla Auditoría con las 25 tablas que audita el api (la lista se había quedado en la de v0.1; una prueba de contrato las mantiene iguales).
+
+### Sprint 9 · Deudas de la v0.5 cerradas
+- Inactividad de 10 minutos del quiosco: E2E de stack con reloj falso (`kiosk-idle.spec.ts`) y una espera REAL de 10 minutos en V8: cierre de sesión a los 600 s, refresh revocado y marca borrada (S9-D23).
+- TV: `tv-soak` con 12 h aceleradas y job nuevo `tv-soak-real` en `nightly.yml` (solo `workflow_dispatch`, `real_hours` hasta 5,5): 5 h reales en GitHub, 30 muestras, 0 errores de consola, heap +7 % entre el primer y el último cuarto (tope 20 %) (S9-D24, S9-D38).
+- WhatsApp: los avisos traen `can_whatsapp` (vivo, con autorización y con teléfono, sin descifrar); sin él el botón sale deshabilitado con «No se puede abrir WhatsApp» y un enlace a la ficha (S9-D22). El api y el web de v0.6 van juntos: una pestaña abierta con el bundle anterior debe recargarse.
+
+### Sprint 9 · Validación (V1 a V8)
+- Gates completos (V9, sobre `e4e1cbc`): api con ruff, formato y mypy limpios y pytest con 12.312 pasan, 103 omitidas y cobertura de 95,83 % (las 18 que cayeron por agotamiento de recursos de Windows, WinError 10055 y 0xC0000142, pasan al repetirlas: 410 de 410); scripts de infraestructura (923 comprobaciones ok) y Caddyfile con 0 fallas; web con lint, tipos, 5.034 pruebas en 278 archivos (cobertura de líneas 97,68 %) y build.
+- Stack de producción en Linux (V3, prod-smoke): proveedor local 280 comprobaciones ok y OpenBao 296 ok, 0 fallas; las 18 del módulo `athletes` (llave sin `init-keys`, 409 sin autorización, `reveal`, blobs `apx1.`, `rotate-key athlete.metric`, nada en claro en los logs) y los permisos por columna de `apex_api`, `apex_worker` y `apex_backup`. Rojo por sabotaje (`REVOKE INSERT`) detectado por las dos comprobaciones.
+- **Rollback a v0.5.0 probado** (V3, `apex-smoke`): `alembic downgrade 0041_results_session_index` con la imagen v0.6 (0044 → 0041) y, con el árbol y la imagen de v0.5.0, api y worker sanos, `/health` 200 con `crypto ok` y `migrations ok`, login y `reveal` del documento. Las llaves de `athlete.metric` se quedan en `crypto_keys` y v0.5 arranca con ellas. Compose y `dbsetup` deben correr desde el árbol de v0.5.0 (`docs/operacion/actualizar.md`, «Volver de v0.6 a v0.5»). Con medidas reales el camino es restaurar el respaldo pre-deploy.
+- Demos 1 a 4 por la interfaz (V4) con conteos en la base; E2E (V5) `stack` 72 pasan y 0 fallan dos veces seguidas (las que se omiten por hora pasan después de medianoche) y `preview` 219 pasan; dos fallas reales corregidas (contraste de «+ Crear» del calendario y una spec de avisos).
+- Rendimiento (V6, `perf`, 5.300 resultados, 4.061 récords, 200 mediciones): el handler suma 12,7 a 12,9 ms a la mediana de `PUT /results` (tope 20 ms); corrección de un socio con 2.000 marcas en 96 a 171 ms; `/summary` en 6 ms (tope 300 ms); lecturas por índice sin apagar el planificador (S9-D70).
+- verify-delivery (V8): pilar 1, 57 de 60 entregados y los 3 parciales (esperas reales) cerrados en vivo; pilar 2 por la interfaz real: avisos bloqueados, tablet con RM, corrección repetida idempotente (409 `invalid_supersedes`) y anulación, `derive-records` crea 0, `verify-audit` íntegra con 8 de 8 firmas.
+
+### Deuda aceptada con dueño
+- Con `--provider openbao`, el api del prod-smoke sigue con proveedor local: el alta y el `reveal` de medidas con OpenBao como proveedor del api no se probaron en el smoke (dueño: Sprint 10, overlay `compose.openbao.yml` en el smoke).
+- Contraseñas y tokens de desarrollo impresos en sesiones anteriores: no se rotan por orden del usuario.
+
 ## [0.5.0]
 
 Fecha de cierre: 2026-11-15. SHA de cierre: el del commit etiquetado `v0.5.0` (`git rev-parse v0.5.0^{commit}`); es el valor que se pasa a `infra/deploy.sh --expect-sha`. La etiqueta se publica en GitHub junto con `main`; el Release en borrador lo arma la CI (`release.yml`).

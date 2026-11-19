@@ -53,7 +53,8 @@ test("sin sesión /socios lleva a /login?next=/socios", async ({ page }) => {
 
 test("una ruta de una versión futura da No encontrada", async ({ page }) => {
   await sessionAs(page, "admin");
-  await page.goto("/socios/00000000-0000-0000-0000-000000000099/atleta");
+  // S9: la pestaña Atleta ya existe (v0.6); la versión futura es el portal del socio (v1.0, fuera de ENABLED_FEATURES).
+  await page.goto("/mi/progreso");
 
   await expect(page.getByRole("heading", { level: 1, name: "No encontrada" })).toBeVisible();
 });

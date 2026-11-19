@@ -119,6 +119,7 @@ const notification = (n: number, overrides: Record<string, unknown>) => ({
   sent_at: "2026-10-20T12:00:00Z",
   sent_by: null,
   skip_reason: null,
+  can_whatsapp: true, // S9-X1: obligatorio desde v0.6 (S9-D22)
   created_at: "2026-10-20T12:00:00Z",
   updated_at: "2026-10-20T12:00:00Z",
   ...overrides,

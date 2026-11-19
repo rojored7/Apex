@@ -52,9 +52,19 @@ test.describe("por avisar hoy contra el stack", () => {
     const total = await botones.count();
     let nombre = "";
     let abierto = false;
+    let bloqueados = 0;
     for (let i = 0; i < total && !abierto; i += 1) {
       const boton = botones.nth(i);
       const etiqueta = (await boton.getAttribute("aria-label")) ?? "";
+      // S9-X1 (S9-D22): sin teléfono válido o sin autorización (`can_whatsapp` falso) el botón viene deshabilitado
+      // con su motivo y no llama al api; se comprueba el aviso y se pasa al siguiente.
+      if (await boton.isDisabled()) {
+        const motivo = await boton.getAttribute("aria-describedby");
+        expect(motivo).not.toBeNull();
+        await expect(page.locator(`[id="${motivo ?? ""}"]`)).toContainText("No se puede abrir WhatsApp");
+        bloqueados += 1;
+        continue;
+      }
       const respuesta = page.waitForResponse((r) => r.url().includes("/wa-link") && r.request().method() === "POST");
       await boton.click();
       const status = (await respuesta).status();
@@ -67,7 +77,7 @@ test.describe("por avisar hoy contra el stack", () => {
       }
     }
     if (!abierto) {
-      test.info().annotations.push({ type: "sin-telefono", description: "Ningún aviso de WhatsApp pendiente tiene un socio con teléfono (las corridas anteriores los enviaron): corre `tools notify --generate-only`." });
+      test.info().annotations.push({ type: "sin-telefono", description: `Bloqueados: ${String(bloqueados)}. Ningún aviso de WhatsApp pendiente tiene un socio con teléfono (las corridas anteriores los enviaron): corre «tools notify --generate-only».` });
       test.skip(true, "sin avisos de WhatsApp pendientes con teléfono");
     }
     await expect(page.getByText(`WhatsApp abierto para ${nombre}. El aviso quedó marcado como enviado.`)).toBeVisible();

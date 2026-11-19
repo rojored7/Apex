@@ -86,7 +86,8 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--control);
-  color: var(--blue-deep);
+  color: var(--ink); /* S9-V5: --blue-deep da 4,43:1 sobre el día de hoy (--blue-tint) sin WOD */
+  text-decoration: underline;
   font: var(--text-label);
 }
 

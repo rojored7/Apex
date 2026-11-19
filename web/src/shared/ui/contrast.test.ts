@@ -43,6 +43,7 @@ const BACKGROUNDS = ["--surface", "--card", "--blue-tint"] as const;
 const CASES: readonly [string, string, string][] = [
   ["Button ghost", read("./Button.module.css"), ".ghost"],
   ["insignia Benchmark", read("../../features/wods/components/WeekCalendar.module.css"), ".badge"],
+  ["enlace «+ Crear» del calendario", read("../../features/wods/components/WeekCalendar.module.css"), ".create"],
 ];
 
 describe("contraste del texto azul de acciones secundarias", () => {

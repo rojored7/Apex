@@ -40,6 +40,8 @@ const REVEALED_METRIC_FIELDS: Readonly<Record<string, string>> = Object.freeze({
 const CANCEL_FIELDS: readonly string[] = ["cancel_reason", "cancelled_at", "cancelled_by"];
 const VOID_FIELD = "voided";
 const STATUS_FIELD = "status";
+const VOIDED_AT_FIELD = "voided_at";
+const INVALIDATED_AT_FIELD = "invalidated_at";
 
 /** "a", "a y b", "a, b y c". */
 export function joinWords(words: readonly string[]): string {
@@ -90,12 +92,14 @@ function attendanceWhat(item: MemberHistoryItemView): string | null {
 // solo is_current en el anterior; anular suma status y voided_*). Sin valores ni nombres de campo.
 function metricWhat(item: MemberHistoryItemView): string | null {
   if (item.action === "insert") return "registró una medición";
-  return item.action === "update" ? "anuló una medición" : null;
+  if (item.action !== "update") return null;
+  return item.fields.includes(VOIDED_AT_FIELD) ? "anuló una medición" : "modificó una medición";
 }
 
 function recordWhat(item: MemberHistoryItemView): string | null {
   if (item.action === "insert") return "registró un récord";
-  return item.action === "update" ? "invalidó un récord" : null;
+  if (item.action !== "update") return null;
+  return item.fields.includes(INVALIDATED_AT_FIELD) ? "invalidó un récord" : "modificó un récord";
 }
 
 function resultWhat(item: MemberHistoryItemView): string | null {

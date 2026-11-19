@@ -50,7 +50,7 @@ describe("AuditDetailPanel · metadatos y cambios", () => {
     renderPanel();
 
     const list = await screen.findByRole("list", { name: "Cambios" });
-    const notes = within(list).getByText("notes").closest("li");
+    const notes = within(list).getByText("Notas").closest("li");
     expect(notes).not.toBeNull();
     expect(notes).toHaveTextContent("Llamar en la tarde → Llamar en la mañana");
   });

@@ -1,7 +1,7 @@
 // S4A-F2 · US-106 (front), S4A-D32: frases del historial por acción y tabla, con el nombre de quien
 // actuó ("Sistema" para el usuario técnico) y sin valores; y el paso de MemberHistoryItem a la
 // AuditEntryView de HistoryAside (historyEntries).
-import { entityLabel } from "../../../shared/lib/audit-labels";
+import { entityLabel, fieldNameLabel } from "../../../shared/lib/audit-labels";
 import { DOCUMENT_VALUE, historyItem, PHONE_VALUE, SYSTEM_USER_ID } from "../../../test/history";
 import { toAuditEntryView } from "./historyEntries";
 import { historyPhrase } from "./historyPhrase";
@@ -191,5 +191,22 @@ describe("historyPhrase · atleta y resultados (S9-V8)", () => {
         expect(phrase).not.toMatch(/voided|invalidated|reason|_/);
       }
     }
+  });
+});
+
+// Revisión de S9-V8 (LOW): anular e invalidar dependen de los campos; otro cambio futuro de la tabla no se disfraza de anulación.
+describe("historyPhrase · atleta, otros cambios (revisión S9-V8)", () => {
+  it("un update de una medición o un récord sin los campos de anular o invalidar da una frase genérica", () => {
+    expect(historyPhrase(historyItem({ table_name: "athletes.body_metrics", fields: ["notes"] }))).toBe("ana modificó una medición");
+    expect(historyPhrase(historyItem({ table_name: "athletes.personal_records", fields: [] }))).toBe("ana modificó un récord");
+  });
+
+  it("los campos de medidas, récords y resultados tienen etiqueta", () => {
+    expect(fieldNameLabel("weight_g")).toBe("Peso");
+    expect(fieldNameLabel("height_cm")).toBe("Altura");
+    expect(fieldNameLabel("body_fat_pct")).toBe("% grasa");
+    expect(fieldNameLabel("notes")).toBe("Notas");
+    expect(fieldNameLabel("is_current")).toBe("Vigente");
+    expect(fieldNameLabel("invalidated_at")).toBe("Fecha de invalidación");
   });
 });

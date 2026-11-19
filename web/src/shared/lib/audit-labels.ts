@@ -113,6 +113,15 @@ export const FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({
   void_reason: "Motivo de anulación",
   // reveal
   field: "Campo",
+  // S9-V8 (revisión): medidas, récords y resultados
+  weight_g: "Peso",
+  height_cm: "Altura",
+  body_fat_pct: "% grasa",
+  notes: "Notas",
+  is_current: "Vigente",
+  invalidated_at: "Fecha de invalidación",
+  invalidated_by: "Invalidado por",
+  invalidated_reason: "Motivo de invalidación",
 });
 
 /** Campos cifrados por el bus en v0.1 (CLAUDE.md, bus de criptografía, regla 9). */

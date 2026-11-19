@@ -123,9 +123,9 @@ describe("summarizeChange", () => {
   });
 
   it("un campo desconocido usa su nombre y un valor que es blob nunca se muestra", () => {
-    const lines = summarizeChange(entry({ before: { notes: "a", extra: BLOB_A }, after: { notes: "b", extra: BLOB_B } }));
+    const lines = summarizeChange(entry({ before: { nota_interna: "a", extra: BLOB_A }, after: { nota_interna: "b", extra: BLOB_B } }));
 
-    expect(lines).toEqual(["notes: a → b", "extra: dato cifrado modificado"]);
+    expect(lines).toEqual(["nota_interna: a → b", "extra: dato cifrado modificado"]);
   });
 
   it("las columnas de índice ciego (_idx) nunca muestran el HMAC", () => {
@@ -185,7 +185,7 @@ describe("S4A-F2 · historial del socio (S4A-D32)", () => {
   });
 
   it("un campo sin etiqueta usa su nombre y un fields vacío no da líneas", () => {
-    expect(summarizeChange(entry({ fields: ["status", "notes"] }))).toEqual(["Cambió: Estado, notes"]);
+    expect(summarizeChange(entry({ fields: ["status", "nota_interna"] }))).toEqual(["Cambió: Estado, nota_interna"]);
     expect(summarizeChange(entry({ fields: [] }))).toEqual([]);
   });
 
@@ -221,7 +221,7 @@ describe("S4A-F2 · historial del socio (S4A-D32)", () => {
 describe("fieldNameLabel · revisión de seguridad S4A-F2 (LOW-2)", () => {
   it("un campo con etiqueta da la etiqueta y uno desconocido con forma de columna se nombra tal cual", () => {
     expect(fieldNameLabel("phone")).toBe("Teléfono");
-    expect(fieldNameLabel("notes")).toBe("notes");
+    expect(fieldNameLabel("nota_interna")).toBe("nota_interna");
     expect(fieldNameLabel("phone_idx")).toBe("phone_idx");
   });
 

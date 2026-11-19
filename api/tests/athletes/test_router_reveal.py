@@ -106,7 +106,7 @@ async def test_las_notas_salen_como_texto_y_un_campo_vacio_como_null(
     cabeceras: Cabeceras,
     session: AsyncSession,
 ) -> None:
-    quien, ruta, _ = await _escena(session, usuario_real, height_cm=None)
+    quien, ruta, medicion = await _escena(session, usuario_real, height_cm=None)
     h = cabeceras(quien)
 
     notas = await app_http.post(ruta, json={"field": "notes"}, headers=h)
@@ -114,6 +114,9 @@ async def test_las_notas_salen_como_texto_y_un_campo_vacio_como_null(
 
     assert notas.json() == {"field": "notes", "value": "Primera medición del año"}
     assert vacio.status_code == 200 and vacio.json() == {"field": "height_cm", "value": None}
+    # P6 (S9-D37): sondear un campo vacío también deja su fila `reveal`.
+    filas = await reveals_de(session, medicion.id)
+    assert sorted(f["after"]["field"] for f in filas) == ["height_cm", "notes"]
 
 
 async def test_socio_403_y_sin_token_401_sin_filas(

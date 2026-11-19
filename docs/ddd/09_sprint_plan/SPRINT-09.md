@@ -61,7 +61,7 @@ En orden ascendente:
 - `0042_athletes_body_metrics` (US-178): crea el esquema `athletes`, la tabla y sus guardas.
 - `0043_athletes_personal_records` (US-180 a US-182): tabla, guardas e invalidación en una sola migración.
 
-Los números `0085` a `0089` del plan original y la `0044` de la exploración quedan sin usar (S9-D2).
+Los números `0085` a `0089` del plan original quedan sin usar (S9-D2). La revisión de Fase 4 añadió `0044_body_metrics_time_checks` (V7b, L1): dos CHECK de orden temporal en `athletes.body_metrics` (S9-D70).
 
 ## Endpoints que expone
 

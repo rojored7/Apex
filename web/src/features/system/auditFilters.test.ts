@@ -1,6 +1,6 @@
 // S4A-F1 (S4A-D58, S4A-D106): de la URL al api. Solo viaja lo que tiene la forma que el api
 // acepta; las fechas son días de Bogotá y viajan en UTC con `to` exclusivo; `q` nunca sale de la URL.
-import { MAX_AUDIT_OFFSET, parseSeq, readAuditFilters, toApiParams } from "./auditFilters";
+import { AUDIT_TABLES, MAX_AUDIT_OFFSET, parseSeq, readAuditFilters, tableLabel, toApiParams } from "./auditFilters";
 
 const UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -99,5 +99,26 @@ describe("parseSeq (S4A-D58)", () => {
 
   it.each([null, "", "abc", "0", "-3", "1.5", "1e3", " 7", "9007199254740993", "0x10"])("%s no es un seq válido", (raw) => {
     expect(parseSeq(raw)).toBeNull();
+  });
+});
+
+// S9-V8: la lista del filtro «Entidad» quedó en la de v0.1; el api audita también avisos, adjuntos, clases, WODs, resultados,
+// llaves y, desde v0.6, medidas y récords (AUDITABLE_TABLES de api/src/app/modules/audit/queries.py).
+describe("AUDIT_TABLES (S9-V8)", () => {
+  const API_AUDITABLE = [
+    "members.members", "members.member_channel_preferences", "attachments.attachments", "classes.class_slots", "classes.class_sessions",
+    "classes.attendance", "wods.movements", "wods.benchmarks", "wods.wods", "wods.wod_movements", "results.wod_results",
+    "athletes.body_metrics", "athletes.personal_records", "notifications.notification_templates", "notifications.notification_rules",
+    "notifications.notifications", "memberships.memberships", "memberships.membership_freezes", "payments.payments", "plans.plans",
+    "auth.users", "auth.one_time_tokens", "settings.settings_sections", "audit.verifications", "crypto.crypto_keys",
+  ];
+
+  it("tiene cada tabla que audita el api, con nombre propio", () => {
+    for (const table of API_AUDITABLE) expect(tableLabel(table)).not.toBe(table);
+    expect(AUDIT_TABLES.map((t) => t.value).sort()).toEqual([...API_AUDITABLE].sort());
+  });
+
+  it("la URL con la tabla de medidas y la acción reveal se conserva", () => {
+    expect(readAuditFilters(new URLSearchParams("table=athletes.body_metrics&action=reveal"))).toMatchObject({ table: "athletes.body_metrics", action: "reveal" });
   });
 });

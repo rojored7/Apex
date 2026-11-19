@@ -16,6 +16,9 @@ const MEMBERS_TABLE = "members.members";
 const MEMBERSHIPS_TABLE = "memberships.memberships";
 const PAYMENTS_TABLE = "payments.payments";
 const ATTENDANCE_TABLE = "classes.attendance";
+const METRICS_TABLE = "athletes.body_metrics";
+const RECORDS_TABLE = "athletes.personal_records";
+const RESULTS_TABLE = "results.wod_results";
 
 /** El campo revelado con su artículo (los cinco cifrados de v0.1). */
 const REVEALED_FIELDS: Readonly<Record<string, string>> = Object.freeze({
@@ -24,6 +27,14 @@ const REVEALED_FIELDS: Readonly<Record<string, string>> = Object.freeze({
   email: "el correo",
   birth_date: "la fecha de nacimiento",
   emergency_contact: "el contacto de emergencia",
+});
+
+/** S9-V8: los cuatro campos cifrados de una medición (`athletes.body_metrics`, S9-D4). */
+const REVEALED_METRIC_FIELDS: Readonly<Record<string, string>> = Object.freeze({
+  weight_g: "el peso",
+  height_cm: "la altura",
+  body_fat_pct: "el % de grasa",
+  notes: "las notas de una medición",
 });
 
 const CANCEL_FIELDS: readonly string[] = ["cancel_reason", "cancelled_at", "cancelled_by"];
@@ -75,15 +86,43 @@ function attendanceWhat(item: MemberHistoryItemView): string | null {
   return item.action === "update" ? "quitó una asistencia" : null;
 }
 
+// S9-V8: medidas (anular = voided_at y voided_by), récords (invalidar = invalidated_*) y resultados (corregir deja
+// solo is_current en el anterior; anular suma status y voided_*). Sin valores ni nombres de campo.
+function metricWhat(item: MemberHistoryItemView): string | null {
+  if (item.action === "insert") return "registró una medición";
+  return item.action === "update" ? "anuló una medición" : null;
+}
+
+function recordWhat(item: MemberHistoryItemView): string | null {
+  if (item.action === "insert") return "registró un récord";
+  return item.action === "update" ? "invalidó un récord" : null;
+}
+
+function resultWhat(item: MemberHistoryItemView): string | null {
+  if (item.action === "insert") return "registró un resultado";
+  if (item.action !== "update") return null;
+  return item.fields.includes(STATUS_FIELD) ? "anuló un resultado" : "corrigió un resultado";
+}
+
+const BY_TABLE: Readonly<Record<string, (item: MemberHistoryItemView) => string | null>> = Object.freeze({
+  [MEMBERS_TABLE]: memberWhat,
+  [MEMBERSHIPS_TABLE]: membershipWhat,
+  [PAYMENTS_TABLE]: paymentWhat,
+  [ATTENDANCE_TABLE]: attendanceWhat,
+  [METRICS_TABLE]: metricWhat,
+  [RECORDS_TABLE]: recordWhat,
+  [RESULTS_TABLE]: resultWhat,
+});
+
 function revealWhat(item: MemberHistoryItemView): string {
   const field = item.fields[0];
-  return `mostró ${(field !== undefined ? REVEALED_FIELDS[field] : undefined) ?? "un dato"}`;
+  const names = item.table_name === METRICS_TABLE ? REVEALED_METRIC_FIELDS : REVEALED_FIELDS;
+  return `mostró ${(field !== undefined ? names[field] : undefined) ?? "un dato"}`;
 }
 
 function what(item: MemberHistoryItemView): string {
   if (item.action === "reveal") return revealWhat(item);
-  const byTable =
-    item.table_name === MEMBERS_TABLE ? memberWhat(item) : item.table_name === MEMBERSHIPS_TABLE ? membershipWhat(item) : item.table_name === PAYMENTS_TABLE ? paymentWhat(item) : item.table_name === ATTENDANCE_TABLE ? attendanceWhat(item) : null;
+  const byTable = BY_TABLE[item.table_name]?.(item) ?? null;
   return byTable ?? `${actionLabel(item.action)} (${entityLabel(item.table_name)})`;
 }
 

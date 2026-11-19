@@ -149,3 +149,47 @@ describe("historyPhrase · asistencia (classes.attendance)", () => {
     expect(historyPhrase(historyItem({ ...SYSTEM, action: "insert", table_name: "classes.attendance" }))).toBe("Sistema registró una asistencia");
   });
 });
+
+// S9-V8: las filas de `athletes.body_metrics`, `athletes.personal_records` y `results.wod_results` llegan al historial del socio
+// con `subject_member_id` y solo nombres de campo; sin frase propia salían como «<acción> (<esquema.tabla>)».
+describe("historyPhrase · atleta y resultados (S9-V8)", () => {
+  const BM = "athletes.body_metrics";
+  const PR = "athletes.personal_records";
+  const WR = "results.wod_results";
+
+  it("medidas: registrar, anular y mostrar cada campo", () => {
+    expect(historyPhrase(historyItem({ action: "insert", table_name: BM }))).toBe("ana registró una medición");
+    expect(historyPhrase(historyItem({ table_name: BM, fields: ["voided_at", "voided_by"] }))).toBe("ana anuló una medición");
+    expect(historyPhrase(historyItem({ action: "reveal", table_name: BM, fields: ["weight_g"] }))).toBe("ana mostró el peso");
+    expect(historyPhrase(historyItem({ action: "reveal", table_name: BM, fields: ["height_cm"] }))).toBe("ana mostró la altura");
+    expect(historyPhrase(historyItem({ action: "reveal", table_name: BM, fields: ["body_fat_pct"] }))).toBe("ana mostró el % de grasa");
+    expect(historyPhrase(historyItem({ action: "reveal", table_name: BM, fields: ["notes"] }))).toBe("ana mostró las notas de una medición");
+  });
+
+  it("récords: registrar e invalidar (a mano o por el resultado)", () => {
+    expect(historyPhrase(historyItem({ action: "insert", table_name: PR }))).toBe("ana registró un récord");
+    expect(historyPhrase(historyItem({ table_name: PR, fields: ["invalidated_at", "invalidated_by", "invalidated_reason"] }))).toBe("ana invalidó un récord");
+    expect(historyPhrase(historyItem({ ...SYSTEM, action: "insert", table_name: PR }))).toBe("Sistema registró un récord");
+  });
+
+  it("resultados: registrar, corregir y anular", () => {
+    expect(historyPhrase(historyItem({ action: "insert", table_name: WR }))).toBe("ana registró un resultado");
+    expect(historyPhrase(historyItem({ table_name: WR, fields: ["is_current"] }))).toBe("ana corrigió un resultado");
+    expect(historyPhrase(historyItem({ table_name: WR, fields: ["is_current", "status", "voided_at", "voided_by", "void_reason"] }))).toBe("ana anuló un resultado");
+  });
+
+  it("las entidades tienen nombre en el historial", () => {
+    expect(entityLabel(BM)).toBe("Medición");
+    expect(entityLabel(PR)).toBe("Récord");
+    expect(entityLabel(WR)).toBe("Resultado");
+  });
+
+  it("nunca incluye valores ni nombres de campo técnicos", () => {
+    for (const fields of [["voided_at"], ["invalidated_reason"], ["void_reason", "status"]]) {
+      for (const table_name of [BM, PR, WR]) {
+        const phrase = historyPhrase(historyItem({ table_name, fields }));
+        expect(phrase).not.toMatch(/voided|invalidated|reason|_/);
+      }
+    }
+  });
+});

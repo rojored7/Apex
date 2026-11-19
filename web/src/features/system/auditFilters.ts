@@ -33,10 +33,27 @@ export interface AuditUrlFilters {
   subject_member_id: string;
 }
 
-// DESIGN-GAP: Auditoria.html ofrece las entidades Resultado y Llave; llegan con sus versiones
-// (resultados en v0.5, llaves en v0.2). Aquí solo las tablas que audita el api hoy (AUDITABLE_TABLES).
+// Las tablas que audita el api hoy (AUDITABLE_TABLES de api/src/app/modules/audit/queries.py). S9-V8: la lista se había
+// quedado en la de v0.1; ahora trae avisos (v0.2), adjuntos y llaves (v0.3), clases (v0.4), WODs y resultados (v0.5) y
+// medidas y récords (v0.6). Una tabla fuera de la lista se descarta de la URL.
 export const AUDIT_TABLES: readonly { value: string; label: string }[] = [
   { value: "members.members", label: "Socio" },
+  { value: "members.member_channel_preferences", label: "Canales de aviso del socio" },
+  { value: "attachments.attachments", label: "Adjunto" },
+  { value: "classes.class_slots", label: "Franja del horario" },
+  { value: "classes.class_sessions", label: "Clase" },
+  { value: "classes.attendance", label: "Asistencia" },
+  { value: "wods.movements", label: "Movimiento" },
+  { value: "wods.benchmarks", label: "Benchmark" },
+  { value: "wods.wods", label: "WOD" },
+  { value: "wods.wod_movements", label: "Movimiento del WOD" },
+  { value: "results.wod_results", label: "Resultado" },
+  { value: "athletes.body_metrics", label: "Medición" },
+  { value: "athletes.personal_records", label: "Récord" },
+  { value: "notifications.notification_templates", label: "Plantilla de aviso" },
+  { value: "notifications.notification_rules", label: "Regla de aviso" },
+  { value: "notifications.notifications", label: "Aviso" },
+  { value: "crypto.crypto_keys", label: "Llave" },
   { value: "memberships.memberships", label: "Membresía" },
   { value: "memberships.membership_freezes", label: "Congelamiento" },
   { value: "payments.payments", label: "Pago" },

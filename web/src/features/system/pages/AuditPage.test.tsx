@@ -263,7 +263,7 @@ describe("AuditPage · acceso y diseño", () => {
       .join("\n");
     const gaps = code.split("\n").filter((line) => line.includes("DESIGN-GAP:")).join("\n");
 
-    for (const topic of ["Qué cambió", "nombre del socio", "Exportar rango", "Resultado", "Llave", "enmascarad", "Descifrar"]) {
+    for (const topic of ["Qué cambió", "nombre del socio", "Exportar rango", "enmascarad", "Descifrar"]) {
       expect(gaps).toContain(topic);
     }
     expect(gaps).not.toContain("ML-DSA");
@@ -271,13 +271,13 @@ describe("AuditPage · acceso y diseño", () => {
   });
 });
 
-// S4B-F1 (S4B-D51): `import-members` y `rotate-key` dejan filas en `members.import_runs` y
-// `crypto.crypto_keys`, tablas que el front no conoce. La lista las pinta con el nombre crudo, sin
+// S4B-F1 (S4B-D51): `import-members` deja filas en `members.import_runs`, una tabla que el front no conoce (S9-V8:
+// `crypto.crypto_keys` ya tiene nombre, «Llave»; el ejemplo pasa a `crypto.crypto_ops`, que el api no audita). La lista las pinta con el nombre crudo, sin
 // error ni pantalla en blanco, y las filas conocidas siguen con su etiqueta.
 describe("AuditPage · tabla desconocida (S4B-D51)", () => {
   const UNKNOWN_ROWS = [
     auditRow({ seq: 90003, table_name: "members.import_runs", action: "insert", record_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", subject_member_id: null }),
-    auditRow({ seq: 90002, table_name: "crypto.crypto_keys", action: "update", record_id: null, subject_member_id: null }),
+    auditRow({ seq: 90002, table_name: "crypto.crypto_ops", action: "update", record_id: null, subject_member_id: null }),
     auditRow({ seq: 90001 }),
   ];
 
@@ -289,7 +289,7 @@ describe("AuditPage · tabla desconocida (S4B-D51)", () => {
 
     expect(within(table).getAllByRole("row")).toHaveLength(4);
     expect(within(first).getByText(/^members\.import_runs · #bbbbbbbb$/)).toBeInTheDocument();
-    expect(within(second).getByText(/^crypto\.crypto_keys$/)).toBeInTheDocument();
+    expect(within(second).getByText(/^crypto\.crypto_ops$/)).toBeInTheDocument();
     expect(within(third).getByText(/^Socio · #aaaaaaaa$/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("3 entradas")).toBeInTheDocument();
@@ -300,13 +300,13 @@ describe("AuditPage · tabla desconocida (S4B-D51)", () => {
     renderAuditPage(`${AUDIT_PATH}?seq=90002`, {
       handlers: {
         "GET /audit": (call) => auditPageReply(call, UNKNOWN_ROWS),
-        "GET /audit/90002": () => ({ status: 200, body: auditDetail({ seq: 90002, table_name: "crypto.crypto_keys", record_id: null, subject_member_id: null }) }),
+        "GET /audit/90002": () => ({ status: 200, body: auditDetail({ seq: 90002, table_name: "crypto.crypto_ops", record_id: null, subject_member_id: null }) }),
       },
     });
 
     const panel = await screen.findByRole("dialog", { name: "Entrada #90002" });
 
-    expect(await within(panel).findByText("crypto.crypto_keys")).toBeInTheDocument();
+    expect(await within(panel).findByText("crypto.crypto_ops")).toBeInTheDocument();
   });
 });
 
